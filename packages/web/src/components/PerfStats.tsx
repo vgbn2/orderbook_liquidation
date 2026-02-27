@@ -4,16 +4,21 @@ import { useStrain } from '../hooks/useStrain';
 
 /**
  * PerfStats — Real-time performance HUD
- * Shows:
- * - NET DELAY (Processing lag)
- * - COMPUTER STRAIN (Weighted score)
- * - FPS (UI fluidness)
+ * Shows: DELAY, STRAIN, FPS, PRESSURE
+ * Can be toggled on/off via toolbar button
  */
 export const PerfStats: React.FC = () => {
-    // Initialize the strain hook
-    useStrain();
+    const showPerfHud = usePerfStore((s) => s.showPerfHud);
 
-    const { procDelay, strain, fps, msgPressure } = usePerfStore((s) => s);
+    // Only run the strain RAF loop when HUD is visible
+    useStrain(showPerfHud);
+
+    const procDelay = usePerfStore((s) => s.procDelay);
+    const strain = usePerfStore((s) => s.strain);
+    const fps = usePerfStore((s) => s.fps);
+    const msgPressure = usePerfStore((s) => s.msgPressure);
+
+    if (!showPerfHud) return null;
 
     const getStrainColor = (val: number) => {
         if (val < 20) return 'var(--green)';

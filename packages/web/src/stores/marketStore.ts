@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { LiqCluster, liqClusterEngine, LiqEvent } from '../engines/liqCluster';
 
 export interface CandleData {
     time: number;
@@ -54,6 +55,16 @@ export interface LiquidationHeatmapData {
     event_count: number;
 }
 
+export interface FundingRateData {
+    time: number;
+    rate: number;
+}
+
+export interface OpenInterestData {
+    time: number;
+    oi: number;
+}
+
 export interface VWAFDataStore {
     vwaf: number;
     vwaf_annualized: number;
@@ -84,6 +95,9 @@ interface MarketState {
     setLastPrice: (price: number) => void;
 
     // Candles
+    symbol: string;
+    setSymbol: (symbol: string) => void;
+
     candles: CandleData[];
     setCandles: (candles: CandleData[]) => void;
     addCandle: (candle: CandleData) => void;
@@ -99,9 +113,17 @@ interface MarketState {
     optionTrades: OptionTradeData[];
     addOptionTrade: (t: OptionTradeData) => void;
 
-    // Liquidations
     liquidations: LiquidationHeatmapData | null;
     setLiquidations: (d: LiquidationHeatmapData) => void;
+    liqClusters: (LiqCluster & { ageFactor: number })[];
+    addLiquidation: (event: LiqEvent) => void;
+
+    // Funding & OI
+    fundingRates: FundingRateData[];
+    setFundingRates: (rates: FundingRateData[]) => void;
+
+    openInterest: OpenInterestData[];
+    setOpenInterest: (oi: OpenInterestData) => void;
 
     // VWAF
     vwaf: VWAFDataStore | null;
@@ -139,6 +161,9 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             priceDirection: price > prev ? 'bullish' : price < prev ? 'bearish' : 'neutral',
         });
     },
+
+    symbol: 'BTCUSDT',
+    setSymbol: (symbol) => set({ symbol }),
 
     candles: [],
     setCandles: (candles) => {
@@ -178,6 +203,21 @@ export const useMarketStore = create<MarketState>((set, get) => ({
 
     liquidations: null,
     setLiquidations: (d) => set({ liquidations: d }),
+    liqClusters: [],
+    addLiquidation: (event) => {
+        liqClusterEngine.process(event);
+        set({ liqClusters: liqClusterEngine.getVisible(Date.now()) });
+    },
+
+    fundingRates: [],
+    setFundingRates: (rates) => set({ fundingRates: rates }),
+
+    openInterest: [],
+    setOpenInterest: (oi) => set((s) => {
+        s.openInterest.push(oi);
+        if (s.openInterest.length > 500) s.openInterest.shift();
+        return { openInterest: [...s.openInterest] };
+    }),
 
     vwaf: null,
     setVwaf: (v) => set({ vwaf: v }),
