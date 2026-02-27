@@ -40,9 +40,10 @@ export interface BacktestResult {
     equityCurve: { time: number, value: number }[];
     bahCurve: { time: number, value: number }[];
     totalPnL: number;
+    monthlyReturns: { year: number; month: number; returnPct: number }[];
+    drawdownCurve: { time: number; value: number }[];
 }
 
-// Simple SMA calculator
 function calculateSMA(data: number[], period: number) {
     const res: number[] = new Array(data.length).fill(0);
     let sum = 0;
@@ -58,17 +59,45 @@ function calculateSMA(data: number[], period: number) {
     return res;
 }
 
-function calcMaxDrawdown(equityCurve: { value: number }[]) {
-    if (equityCurve.length === 0) return 0;
-    let peak = equityCurve[0].value;
-    let maxDD = 0;
-
-    for (const point of equityCurve) {
-        if (point.value > peak) peak = point.value;
-        const drawdown = (peak - point.value) / peak;
-        if (drawdown > maxDD) maxDD = drawdown;
+function calculateEMA(data: number[], period: number) {
+    const res: number[] = new Array(data.length).fill(0);
+    if (!data.length) return res;
+    const k = 2 / (period + 1);
+    let ema = data[0];
+    res[0] = ema;
+    for (let i = 1; i < data.length; i++) {
+        ema = (data[i] * k) + (ema * (1 - k));
+        res[i] = ema;
     }
-    return maxDD * 100; // as %
+    return res;
+}
+
+function calculateRSI(data: number[], period: number) {
+    const res: number[] = new Array(data.length).fill(50);
+    if (data.length <= period) return res;
+
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+        const diff = data[i] - data[i - 1];
+        if (diff >= 0) gains += diff;
+        else losses -= diff;
+        res[i] = losses === 0 ? 100 : 100 - (100 / (1 + gains / losses));
+    }
+
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+
+    for (let i = period + 1; i < data.length; i++) {
+        const diff = data[i] - data[i - 1];
+        const gain = diff >= 0 ? diff : 0;
+        const loss = diff < 0 ? -diff : 0;
+
+        avgGain = ((avgGain * (period - 1)) + gain) / period;
+        avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+
+        res[i] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+    }
+    return res;
 }
 
 export function runBacktest(candles: CandleData[], configRaw: string): BacktestResult {
@@ -93,6 +122,10 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
             config.indicators.forEach(ind => {
                 if (ind.type === 'SMA') {
                     env[ind.name] = calculateSMA(env.close, ind.period);
+                } else if (ind.type === 'EMA') {
+                    env[ind.name] = calculateEMA(env.close, ind.period);
+                } else if (ind.type === 'RSI') {
+                    env[ind.name] = calculateRSI(env.close, ind.period);
                 }
             });
         }
@@ -213,6 +246,47 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
 
         const bahFinalValue = bahQty * candles[candles.length - 1].close;
 
+        // Calculate Monthly Returns
+        const monthlyReturns: { year: number; month: number; returnPct: number }[] = [];
+        if (equityCurve.length > 0) {
+            let currentMonth = new Date(equityCurve[0].time).getMonth();
+            let currentYear = new Date(equityCurve[0].time).getFullYear();
+            let startValue = equityCurve[0].value;
+            let endValue = startValue;
+
+            for (let i = 1; i < equityCurve.length; i++) {
+                const pt = equityCurve[i];
+                const d = new Date(pt.time);
+                if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear) {
+                    monthlyReturns.push({
+                        year: currentYear,
+                        month: currentMonth,
+                        returnPct: ((endValue - startValue) / startValue) * 100
+                    });
+                    currentMonth = d.getMonth();
+                    currentYear = d.getFullYear();
+                    startValue = endValue;
+                }
+                endValue = pt.value;
+            }
+            monthlyReturns.push({
+                year: currentYear,
+                month: currentMonth,
+                returnPct: ((endValue - startValue) / startValue) * 100
+            });
+        }
+
+        let peak = equityCurve.length > 0 ? equityCurve[0].value : 0;
+        let maxDrawdown = 0;
+        const drawdownCurve: { time: number; value: number }[] = [];
+
+        for (const pt of equityCurve) {
+            if (pt.value > peak) peak = pt.value;
+            const dd = peak > 0 ? ((peak - pt.value) / peak) * 100 : 0;
+            drawdownCurve.push({ time: pt.time, value: dd });
+            if (dd > maxDrawdown) maxDrawdown = dd;
+        }
+
         return {
             trades,
             totalTrades: trades.length,
@@ -224,10 +298,12 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
             bahFinalValue,
             bahReturnPct: ((bahFinalValue - initialBalance) / initialBalance) * 100,
             sharpeRatio,
-            maxDrawdown: calcMaxDrawdown(equityCurve),
+            maxDrawdown,
             equityCurve,
             bahCurve,
-            totalPnL: trades.reduce((sum, t) => sum + t.pnlPct, 0)
+            totalPnL: trades.reduce((sum, t) => sum + t.pnlPct, 0),
+            monthlyReturns,
+            drawdownCurve
         };
     } catch (err: any) {
         throw new Error(`Backtest error: ${err.message}`);

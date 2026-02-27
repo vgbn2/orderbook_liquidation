@@ -153,16 +153,19 @@ export class BinanceAdapter implements ExchangeAdapter {
 
         // Cache latest price in Redis
         redis.set(`price:${this.symbol.toUpperCase()}`, candle.close.toString()).catch(() => { });
+        import('../engines/alerts.js').then(m => m.alertsEngine.setSpot(candle.close));
 
         // Persist closed candles to TimescaleDB
-        if (k.x && interval === '1m') {
+        const PERSIST_INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
+        if (k.x && PERSIST_INTERVALS.includes(interval)) {
             // Feed AMD Reversal Detector on candle close (only for 1m)
-            amdDetector.onCandle(candle);
+            if (interval === '1m') amdDetector.onCandle(candle);
+
             query(
                 `INSERT INTO ohlcv_candles (time, exchange, symbol, timeframe, open, high, low, close, volume)
          VALUES (to_timestamp($1), $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT DO NOTHING`,
-                [candle.time, 'binance', this.symbol.toUpperCase(), '1m', candle.open, candle.high, candle.low, candle.close, candle.volume],
+                [candle.time, 'binance', this.symbol.toUpperCase(), interval, candle.open, candle.high, candle.low, candle.close, candle.volume],
             ).catch((err) => logger.error({ err }, 'Failed to persist candle'));
         }
     }

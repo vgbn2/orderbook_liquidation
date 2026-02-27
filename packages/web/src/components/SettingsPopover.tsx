@@ -1,4 +1,6 @@
 import { useRef, useEffect } from 'react';
+import { useSettingsStore } from '../stores/settingsStore';
+import { showToast } from './Toast';
 
 interface SettingsPopoverProps {
     isOpen: boolean;
@@ -8,6 +10,11 @@ interface SettingsPopoverProps {
 
 export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverProps) {
     const popoverRef = useRef<HTMLDivElement>(null);
+    const {
+        tradingConfirmations, setTradingConfirmations,
+        theme, setTheme,
+        chartLayout, setChartLayout
+    } = useSettingsStore();
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -65,22 +72,46 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Trading Confirmations</span>
-                    <button className="toggle active">ON</button>
+                    <button
+                        className={`toggle ${tradingConfirmations ? 'active' : ''}`}
+                        onClick={() => {
+                            setTradingConfirmations(!tradingConfirmations);
+                            showToast(`Trading confirmations ${!tradingConfirmations ? 'enabled' : 'disabled'}`, 'info');
+                        }}
+                    >
+                        {tradingConfirmations ? 'ON' : 'OFF'}
+                    </button>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Theme</span>
-                    <select className="inp inp-select" style={{ width: 100, height: 28, fontSize: 'var(--text-xs)' }}>
-                        <option>Dark (Default)</option>
-                        <option>Light</option>
+                    <select
+                        className="inp inp-select"
+                        style={{ width: 100, height: 28, fontSize: 'var(--text-xs)' }}
+                        value={theme}
+                        onChange={(e) => {
+                            setTheme(e.target.value as any);
+                            showToast(`Theme changed to ${e.target.value}`, 'info');
+                        }}
+                    >
+                        <option value="Dark">Dark (Default)</option>
+                        <option value="Light">Light</option>
                     </select>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Chart Layout</span>
-                    <select className="inp inp-select" style={{ width: 100, height: 28, fontSize: 'var(--text-xs)' }}>
-                        <option>Advanced</option>
-                        <option>Simple</option>
+                    <select
+                        className="inp inp-select"
+                        style={{ width: 100, height: 28, fontSize: 'var(--text-xs)' }}
+                        value={chartLayout}
+                        onChange={(e) => {
+                            setChartLayout(e.target.value as any);
+                            showToast(`Chart layout changed to ${e.target.value}`, 'info');
+                        }}
+                    >
+                        <option value="Advanced">Advanced</option>
+                        <option value="Simple">Simple</option>
                     </select>
                 </div>
             </div>

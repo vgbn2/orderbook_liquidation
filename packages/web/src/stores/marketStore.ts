@@ -252,6 +252,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     setQuantSnapshot: (s) => set({ quantSnapshot: s }),
 
     multiTfCvd: (() => {
+        if (typeof window === 'undefined') return {};
         try {
             const saved = localStorage.getItem('terminus_multi_tf_cvd');
             return saved ? JSON.parse(saved) : {};

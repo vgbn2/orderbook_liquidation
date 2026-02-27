@@ -1,4 +1,6 @@
 let cumulativeDelta = 0;
+let lastCandleTime = 0;
+let lastCandleDelta = 0;
 
 self.onmessage = (event) => {
     const { type, payload } = event.data;
@@ -6,9 +8,13 @@ self.onmessage = (event) => {
     switch (type) {
         case 'INIT':
             cumulativeDelta = 0;
+            lastCandleTime = 0;
+            lastCandleDelta = 0;
             break;
         case 'RESET_CVD':
             cumulativeDelta = payload || 0;
+            lastCandleTime = 0;
+            lastCandleDelta = 0;
             break;
         case 'WS_MESSAGE':
             try {
@@ -30,10 +36,22 @@ self.onmessage = (event) => {
                     // Optimization: Only compute cumulative on "bake-in" (isUpdate: false)
                     // and provide a raw delta for updates.
                     if (c.isUpdate === false) {
+                        cumulativeDelta -= lastCandleDelta;
                         cumulativeDelta += delta;
+                        lastCandleDelta = 0;
+                        lastCandleTime = c.time;
+                    } else {
+                        if (c.time !== lastCandleTime) {
+                            lastCandleTime = c.time;
+                            lastCandleDelta = 0;
+                        }
+
+                        cumulativeDelta -= lastCandleDelta;
+                        cumulativeDelta += delta;
+                        lastCandleDelta = delta;
                     }
 
-                    msg._cvd = cumulativeDelta + (c.isUpdate ? delta : 0);
+                    msg._cvd = cumulativeDelta;
                 }
 
                 self.postMessage({

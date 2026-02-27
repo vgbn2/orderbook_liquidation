@@ -189,4 +189,8 @@ export type WSTopic =
     | `replay`
     | `alerts`
     | `quant.analytics`
-    | `quant.error`;
+    | `quant.error`
+    | 'funding_rate'
+    | 'open_interest'
+    | 'symbol_changed'
+    | 'amd_signal';

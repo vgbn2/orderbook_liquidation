@@ -26,7 +26,7 @@ export async function runMigrations(): Promise<void> {
     SELECT create_hypertable('ohlcv_candles', 'time', if_not_exists => TRUE);
   `);
   await query(`
-    CREATE INDEX IF NOT EXISTS idx_candles_sym_tf
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_candles_sym_tf_unique
     ON ohlcv_candles (symbol, timeframe, time DESC);
   `);
 

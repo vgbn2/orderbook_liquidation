@@ -131,6 +131,7 @@ export function Chart({
     const liquidations = useMarketStore((s) => s.liquidations);
     const fundingRates = useMarketStore((s) => s.fundingRates);
     const openInterest = useMarketStore((s) => s.openInterest);
+    const timeframe = useMarketStore((s) => s.timeframe);
 
     const drawingState = useRef<{
         started: boolean;
@@ -383,17 +384,19 @@ export function Chart({
 
     // ── Toggle indicator visibility ────────────
     useEffect(() => {
-        volumeSeriesRef.current?.applyOptions({ visible: activeIndicators.has('volume') });
-        cvdSeriesRef.current?.applyOptions({ visible: activeIndicators.has('cvd') });
-        cvdHTFSeriesRef.current?.applyOptions({ visible: activeIndicators.has('cvd_htf') });
-        deltaSeriesRef.current?.applyOptions({ visible: activeIndicators.has('delta') });
-        vwapSeriesRef.current?.applyOptions({ visible: activeIndicators.has('vwap') });
-        liqSeriesRef.current?.applyOptions({ visible: activeIndicators.has('liq_overlay') });
-        rsiSeriesRef.current?.applyOptions({ visible: activeIndicators.has('rsi') });
-        macdLineRef.current?.applyOptions({ visible: activeIndicators.has('macd') });
-        macdSignalRef.current?.applyOptions({ visible: activeIndicators.has('macd') });
-        macdHistRef.current?.applyOptions({ visible: activeIndicators.has('macd') });
-    }, [activeIndicators]);
+        const isVisible = (key: IndicatorKey) => activeIndicators.has(key) && INDICATOR_RELEVANCE[key].includes(timeframe);
+
+        volumeSeriesRef.current?.applyOptions({ visible: isVisible('volume') });
+        cvdSeriesRef.current?.applyOptions({ visible: isVisible('cvd') });
+        cvdHTFSeriesRef.current?.applyOptions({ visible: isVisible('cvd_htf') });
+        deltaSeriesRef.current?.applyOptions({ visible: isVisible('delta') });
+        vwapSeriesRef.current?.applyOptions({ visible: isVisible('vwap') });
+        liqSeriesRef.current?.applyOptions({ visible: isVisible('liq_overlay') });
+        rsiSeriesRef.current?.applyOptions({ visible: isVisible('rsi') });
+        macdLineRef.current?.applyOptions({ visible: isVisible('macd') });
+        macdSignalRef.current?.applyOptions({ visible: isVisible('macd') });
+        macdHistRef.current?.applyOptions({ visible: isVisible('macd') });
+    }, [activeIndicators, timeframe]);
 
     // ── Update data ────────────────────────────
     useEffect(() => {
@@ -433,7 +436,7 @@ export function Chart({
         }
 
         // ── Sync HTF CVD ──
-        if (cvdHTFSeriesRef.current && activeIndicators.has('cvd_htf')) {
+        if (cvdHTFSeriesRef.current && activeIndicators.has('cvd_htf') && INDICATOR_RELEVANCE['cvd_htf'].includes(timeframe)) {
             const htfData = useMarketStore.getState().multiTfCvd['15m'] || [];
             if (htfData.length > 0) {
                 const formatted = htfData.map(d => ({
@@ -590,10 +593,9 @@ export function Chart({
     // ── Data sync for Funding & OI ──
     useEffect(() => {
         if (!fundingSeriesRef.current) return;
-        fundingSeriesRef.current.applyOptions({
-            visible: activeIndicators.has('funding_rate'),
-        });
-        if (activeIndicators.has('funding_rate') && fundingRates.length > 0) {
+        const visible = activeIndicators.has('funding_rate') && INDICATOR_RELEVANCE['funding_rate'].includes(timeframe);
+        fundingSeriesRef.current.applyOptions({ visible });
+        if (visible && fundingRates.length > 0) {
             const data = fundingRates.map(f => ({
                 time: (Math.floor(f.time / 1000)) as Time,
                 value: f.rate * 100, // percentage for better visibility
@@ -610,10 +612,9 @@ export function Chart({
 
     useEffect(() => {
         if (!oiSeriesRef.current) return;
-        oiSeriesRef.current.applyOptions({
-            visible: activeIndicators.has('open_interest'),
-        });
-        if (activeIndicators.has('open_interest') && openInterest.length > 0) {
+        const visible = activeIndicators.has('open_interest') && INDICATOR_RELEVANCE['open_interest'].includes(timeframe);
+        oiSeriesRef.current.applyOptions({ visible });
+        if (visible && openInterest.length > 0) {
             const data = openInterest.map(o => ({
                 time: (Math.floor(o.time / 1000)) as Time,
                 value: o.oi
@@ -630,7 +631,7 @@ export function Chart({
     // ── Liquidation overlay on chart (price lines) ──
     useEffect(() => {
         if (!candleSeriesRef.current || !liquidations || !candles.length) return;
-        if (!activeIndicators.has('liq_overlay')) return;
+        if (!activeIndicators.has('liq_overlay') || !INDICATOR_RELEVANCE['liq_overlay'].includes(timeframe)) return;
 
         // Remove existing liquidation price lines
         const series = candleSeriesRef.current;
@@ -952,7 +953,7 @@ export function Chart({
         }
 
         // ── Resting Liquidity overlay ──────────────────
-        if (activeIndicators.has('resting_liq') && candleSeriesRef.current) {
+        if (activeIndicators.has('resting_liq') && INDICATOR_RELEVANCE['resting_liq'].includes(timeframe) && candleSeriesRef.current) {
             // Retrieve latest orderbook on demand to decouple React renders
             const currentOrderbook = useMarketStore.getState().orderbook;
             const currentCandleTime = candles[candles.length - 1]?.time || 0;
@@ -1016,7 +1017,7 @@ export function Chart({
         }
 
         // ── Liq Clusters overlay ──────────────────
-        if (activeIndicators.has('liq_clusters') && candleSeriesRef.current) {
+        if (activeIndicators.has('liq_clusters') && INDICATOR_RELEVANCE['liq_clusters'].includes(timeframe) && candleSeriesRef.current) {
             // Retrieve latest liability clusters on demand
             const { liqClusters } = useMarketStore.getState();
 
@@ -1047,7 +1048,7 @@ export function Chart({
         }
 
         // ── Session Boxes overlay ──────────────────
-        if (activeIndicators.has('session_boxes') && candleSeriesRef.current) {
+        if (activeIndicators.has('session_boxes') && INDICATOR_RELEVANCE['session_boxes'].includes(timeframe) && candleSeriesRef.current) {
             const range = ts.getVisibleLogicalRange();
             if (range && candles.length > 0) {
                 const fromIdx = Math.max(0, Math.floor(range.from));

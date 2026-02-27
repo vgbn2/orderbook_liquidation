@@ -38,7 +38,12 @@ def main():
         def get_close(ticker):
             try:
                 if isinstance(data.columns, __import__('pandas').MultiIndex):
-                    return data[ticker]['Close'].dropna()
+                    if ('Close', ticker) in data.columns:
+                        return data['Close'][ticker].dropna()
+                    elif (ticker, 'Close') in data.columns:
+                        return data[ticker]['Close'].dropna()
+                    else:
+                        return None
                 return data['Close'].dropna()
             except KeyError:
                 return None

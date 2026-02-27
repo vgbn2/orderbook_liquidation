@@ -18,7 +18,7 @@ export const usePerfStore = create<PerfState>()((set) => ({
     strain: 0,
     fps: 60,
     msgPressure: 0,
-    showPerfHud: localStorage.getItem('terminus_perf_hud') !== 'false',
+    showPerfHud: typeof window !== 'undefined' ? localStorage.getItem('terminus_perf_hud') !== 'false' : true,
 
     setMetrics: (metrics) => set((state) => ({ ...state, ...metrics })),
     toggleHud: () => set((state) => {
