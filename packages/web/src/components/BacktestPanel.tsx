@@ -54,7 +54,11 @@ export function BacktestPanel() {
             {error && <div style={{ color: 'var(--down-color)', fontSize: '0.8rem' }}>{error}</div>}
 
             {result && (
-                <div className="stats-grid">
+                <div className="stats-grid" style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                    gap: '0.5rem'
+                }}>
                     <div className="stat-card">
                         <span className="stat-label">Total Trades</span>
                         <span className="stat-value">{result.totalTrades}</span>
@@ -64,7 +68,25 @@ export function BacktestPanel() {
                         <span className="stat-value">{result.winRate.toFixed(1)}%</span>
                     </div>
                     <div className="stat-card">
-                        <span className="stat-label">Total PnL</span>
+                        <span className="stat-label">Sharpe Ratio</span>
+                        <span className="stat-value">{result.sharpeRatio.toFixed(3)}</span>
+                    </div>
+                    <div className="stat-card">
+                        <span className="stat-label">Initial Bal</span>
+                        <span className="stat-value">${result.initialBalance.toLocaleString()}</span>
+                    </div>
+                    <div className="stat-card">
+                        <span className="stat-label">Final Bal</span>
+                        <span className="stat-value">${result.finalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="stat-card">
+                        <span className="stat-label">Net P&L</span>
+                        <span className={`stat-value ${result.netPnL >= 0 ? 'up' : 'down'}`}>
+                            {result.netPnL >= 0 ? '+' : ''}${result.netPnL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    </div>
+                    <div className="stat-card">
+                        <span className="stat-label">Total %</span>
                         <span className={`stat-value ${result.totalPnL >= 0 ? 'up' : 'down'}`}>
                             {result.totalPnL >= 0 ? '+' : ''}{result.totalPnL.toFixed(2)}%
                         </span>
