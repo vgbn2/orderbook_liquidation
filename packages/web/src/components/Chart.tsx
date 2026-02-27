@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { createChart, ColorType, CrosshairMode, LineStyle } from 'lightweight-charts';
 import type {
     IChartApi,
@@ -11,13 +11,13 @@ import type {
 } from 'lightweight-charts';
 import { useMarketStore } from '../stores/marketStore';
 import { PerfStats } from './PerfStats';
-import { usePerfStore } from '../stores/usePerfStore';
+
 
 // ═══════════════════════════════════════════════════
 //  Drawing Types
 // ═══════════════════════════════════════════════════
 
-type DrawingTool = 'none' | 'line' | 'hline' | 'box';
+export type DrawingTool = 'none' | 'line' | 'hline' | 'box' | 'fib' | 'ray';
 
 interface LineDrawing {
     type: 'line';
@@ -42,22 +42,39 @@ interface BoxDrawing {
     color: string;
 }
 
-type Drawing = LineDrawing | HLineDrawing | BoxDrawing;
+interface FibDrawing {
+    type: 'fib';
+    id: string;
+    p1: { time: number; price: number };
+    p2: { time: number; price: number };
+    color: string;
+}
+
+interface RayDrawing {
+    type: 'ray';
+    id: string;
+    p1: { time: number; price: number };
+    p2: { time: number; price: number };
+    color: string;
+}
+
+type Drawing = LineDrawing | HLineDrawing | BoxDrawing | FibDrawing | RayDrawing;
 
 // ═══════════════════════════════════════════════════
 //  Indicator Types
 // ═══════════════════════════════════════════════════
 
-type IndicatorKey = 'volume' | 'cvd' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq' | 'liq_clusters' | 'funding_rate' | 'open_interest' | 'session_boxes';
+export type IndicatorKey = 'volume' | 'cvd' | 'cvd_htf' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq' | 'liq_clusters' | 'funding_rate' | 'open_interest' | 'session_boxes';
 
 // ═══════════════════════════════════════════════════
 //  TF-Relevance Gating
 // ═══════════════════════════════════════════════════
 
-const ALL_TFS = ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'];
-const INDICATOR_RELEVANCE: Record<IndicatorKey, string[]> = {
+export const ALL_TFS = ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'];
+export const INDICATOR_RELEVANCE: Record<IndicatorKey, string[]> = {
     volume: ALL_TFS,
     cvd: ALL_TFS,
+    cvd_htf: ['1m', '2m', '3m', '5m', '15m'],
     delta: ALL_TFS,
     vwap: ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '1d', '1w', '1M'],
     liq_overlay: ALL_TFS,
@@ -72,20 +89,34 @@ const INDICATOR_RELEVANCE: Record<IndicatorKey, string[]> = {
 
 interface ChartProps {
     timezoneOffset?: number;
-    timeframe?: string;
+
+    activeTool?: DrawingTool;
+    drawings?: Drawing[];
+    setDrawings?: React.Dispatch<React.SetStateAction<Drawing[]>>;
+    activeIndicators?: Set<IndicatorKey>;
+    onSelectDrawing?: (id: string | null) => void;
+    selectedDrawing?: string | null;
+    onToolEnd?: () => void;
 }
 
 // ═══════════════════════════════════════════════════
 //  Chart Component
 // ═══════════════════════════════════════════════════
 
-export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
+export function Chart({
+    timezoneOffset = 7,
+    activeTool = 'none', drawings = [], setDrawings = () => { },
+    activeIndicators = new Set(['volume']),
+    onSelectDrawing = () => { }, selectedDrawing = null,
+    onToolEnd = () => { }
+}: ChartProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
     const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
     const cvdSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const cvdHTFSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const deltaSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
     const vwapSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const liqSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -98,31 +129,35 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
 
     const candles = useMarketStore((s) => s.candles);
     const liquidations = useMarketStore((s) => s.liquidations);
-    const orderbook = useMarketStore((s) => s.orderbook);
     const fundingRates = useMarketStore((s) => s.fundingRates);
     const openInterest = useMarketStore((s) => s.openInterest);
 
-    const [activeTool, setActiveTool] = useState<DrawingTool>('none');
-    const [drawings, setDrawings] = useState<Drawing[]>([]);
-    const [selectedDrawing, setSelectedDrawing] = useState<string | null>(null);
-    const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorKey>>(
-        new Set(['volume'])
-    );
     const drawingState = useRef<{
         started: boolean;
         p1?: { time: number; price: number };
     }>({ started: false });
+    const initialLoadRef = useRef(false);
     const cachedWallsRef = useRef<any[]>([]);
     const lastWallUpdateRef = useRef<number>(0);
 
-    const toggleIndicator = useCallback((key: IndicatorKey) => {
-        setActiveIndicators((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            return next;
-        });
+    // ── Persistence: Load ──
+    useEffect(() => {
+        const savedDrawings = localStorage.getItem('terminus_drawings');
+        if (savedDrawings) {
+            try {
+                setDrawings(JSON.parse(savedDrawings));
+            } catch (e) {
+                console.error('Failed to load drawings', e);
+            }
+        }
+        initialLoadRef.current = true;
     }, []);
+
+    // ── Persistence: Save ──
+    useEffect(() => {
+        if (!initialLoadRef.current) return;
+        localStorage.setItem('terminus_drawings', JSON.stringify(drawings));
+    }, [drawings]);
 
     // ── Initialize chart ──────────────────────────
     useEffect(() => {
@@ -177,6 +212,13 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
         const cvdSeries = chart.addLineSeries({
             color: '#00b4ff',
             lineWidth: 1,
+            priceScaleId: 'cvd',
+            visible: false,
+        });
+        const cvdHTFSeries = chart.addLineSeries({
+            color: '#00f2ff',
+            lineWidth: 2,
+            lineStyle: LineStyle.Solid,
             priceScaleId: 'cvd',
             visible: false,
         });
@@ -270,6 +312,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
         candleSeriesRef.current = candleSeries;
         volumeSeriesRef.current = volumeSeries;
         cvdSeriesRef.current = cvdSeries;
+        cvdHTFSeriesRef.current = cvdHTFSeries;
         deltaSeriesRef.current = deltaSeries;
         vwapSeriesRef.current = vwapSeries;
         liqSeriesRef.current = liqSeries;
@@ -288,8 +331,8 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                 if (canvasRef.current) {
                     canvasRef.current.width = width * window.devicePixelRatio;
                     canvasRef.current.height = height * window.devicePixelRatio;
-                    canvasRef.current.style.width = `${width}px`;
-                    canvasRef.current.style.height = `${height}px`;
+                    canvasRef.current.style.width = `${width} px`;
+                    canvasRef.current.style.height = `${height} px`;
                 }
             }
         });
@@ -332,7 +375,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                     const yyyy = d.getUTCFullYear();
                     const hh = String(d.getUTCHours()).padStart(2, '0');
                     const mm = String(d.getUTCMinutes()).padStart(2, '0');
-                    return `${day} ${dd} ${mon} ${yyyy} ${hh}:${mm}`;
+                    return `${day} ${dd} ${mon} ${yyyy} ${hh}:${mm} `;
                 },
             },
         });
@@ -342,6 +385,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
     useEffect(() => {
         volumeSeriesRef.current?.applyOptions({ visible: activeIndicators.has('volume') });
         cvdSeriesRef.current?.applyOptions({ visible: activeIndicators.has('cvd') });
+        cvdHTFSeriesRef.current?.applyOptions({ visible: activeIndicators.has('cvd_htf') });
         deltaSeriesRef.current?.applyOptions({ visible: activeIndicators.has('delta') });
         vwapSeriesRef.current?.applyOptions({ visible: activeIndicators.has('vwap') });
         liqSeriesRef.current?.applyOptions({ visible: activeIndicators.has('liq_overlay') });
@@ -375,13 +419,29 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
 
         // ── Compute CVD (Cumulative Volume Delta) ──
         if (cvdSeriesRef.current) {
-            let cumulativeDelta = 0;
-            const cvdData: LineData<Time>[] = candles.map((c) => {
-                const delta = c.close >= c.open ? c.volume : -c.volume;
-                cumulativeDelta += delta;
-                return { time: c.time as Time, value: cumulativeDelta };
+            let runningCvd = 0;
+            const cvdData: LineData<Time>[] = candles.map((c: any) => {
+                if (c.cvd !== undefined) {
+                    runningCvd = c.cvd;
+                } else {
+                    const delta = c.close >= c.open ? c.volume : -c.volume;
+                    runningCvd += delta;
+                }
+                return { time: c.time as Time, value: runningCvd };
             });
             cvdSeriesRef.current.setData(cvdData);
+        }
+
+        // ── Sync HTF CVD ──
+        if (cvdHTFSeriesRef.current && activeIndicators.has('cvd_htf')) {
+            const htfData = useMarketStore.getState().multiTfCvd['15m'] || [];
+            if (htfData.length > 0) {
+                const formatted = htfData.map(d => ({
+                    time: d.time as Time,
+                    value: d.value
+                })).filter(d => candles.some(c => c.time === d.time)); // Only show data that matches current chart range
+                cvdHTFSeriesRef.current.setData(formatted);
+            }
         }
 
         // ── Compute Delta (per-bar volume delta) ──
@@ -487,14 +547,14 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                     position: t.type === 'LONG' ? 'belowBar' : 'aboveBar',
                     color: t.type === 'LONG' ? '#2196F3' : '#FF9800',
                     shape: t.type === 'LONG' ? 'arrowUp' : 'arrowDown',
-                    text: `Enter ${t.type}`,
+                    text: `Enter ${t.type} `,
                 });
                 markers.push({
                     time: t.exitTime,
                     position: t.type === 'LONG' ? 'aboveBar' : 'belowBar',
                     color: t.pnl >= 0 ? '#4CAF50' : '#F44336',
                     shape: t.type === 'LONG' ? 'arrowDown' : 'arrowUp',
-                    text: `Exit\n${t.pnlPct.toFixed(2)}%`,
+                    text: `Exit\n${t.pnlPct.toFixed(2)}% `,
                 });
             });
 
@@ -504,6 +564,27 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
 
         window.addEventListener('backtest_results', handleBacktest);
         return () => window.removeEventListener('backtest_results', handleBacktest);
+    }, []);
+
+    // ── Jump to Trade (from Floating Panel) ──
+    useEffect(() => {
+        const handleJump = (e: any) => {
+            const trade = e.detail;
+            if (!chartRef.current || !trade) return;
+
+            const ts = chartRef.current.timeScale();
+            // Calculate a reasonable range to view the trade
+            const duration = trade.exitTime - trade.entryTime;
+            const padding = Math.max(duration * 0.5, 3600); // at least 1h padding
+
+            ts.setVisibleRange({
+                from: (trade.entryTime - padding) as Time,
+                to: (trade.exitTime + padding) as Time,
+            });
+        };
+
+        window.addEventListener('jump_to_trade', handleJump);
+        return () => window.removeEventListener('jump_to_trade', handleJump);
     }, []);
 
     // ── Data sync for Funding & OI ──
@@ -566,8 +647,8 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
             const intensity = zone.total / maxLiq;
             const isLong = zone.long_liq_usd > zone.short_liq_usd;
             const color = isLong
-                ? `rgba(255,45,78,${0.3 + intensity * 0.5})`   // Red for long liquidations (below)
-                : `rgba(0,232,122,${0.3 + intensity * 0.5})`;   // Green for short liquidations (above)
+                ? `rgba(255, 45, 78, ${0.3 + intensity * 0.5})`   // Red for long liquidations (below)
+                : `rgba(0, 232, 122, ${0.3 + intensity * 0.5})`;   // Green for short liquidations (above)
 
             const line = series.createPriceLine({
                 price: zone.price,
@@ -575,7 +656,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                 lineWidth: 1,
                 lineStyle: 2, // Dashed
                 axisLabelVisible: true,
-                title: `LIQ $${(zone.total / 1e6).toFixed(1)}M`,
+                title: `LIQ $${(zone.total / 1e6).toFixed(1)} M`,
             });
             lines.push(line);
         }
@@ -608,7 +689,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                     color: '#00b4ff',
                 };
                 setDrawings((prev) => [...prev, d]);
-                setActiveTool('none');
+                onToolEnd();
                 return;
             }
 
@@ -636,9 +717,27 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                         color: 'rgba(0,180,255,0.15)',
                     };
                     setDrawings((prev) => [...prev, d]);
+                } else if (activeTool === 'fib') {
+                    const d: FibDrawing = {
+                        type: 'fib',
+                        id: `f-${Date.now()}`,
+                        p1,
+                        p2,
+                        color: 'rgba(0,255,150,0.8)',
+                    };
+                    setDrawings((prev) => [...prev, d]);
+                } else if (activeTool === 'ray') {
+                    const d: RayDrawing = {
+                        type: 'ray',
+                        id: `r-${Date.now()}`,
+                        p1,
+                        p2,
+                        color: 'rgba(255,140,0,0.8)',
+                    };
+                    setDrawings((prev) => [...prev, d]);
                 }
                 drawingState.current = { started: false };
-                setActiveTool('none');
+                onToolEnd();
             }
         };
 
@@ -682,7 +781,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                 ctx.setLineDash([]);
 
                 // Price label on right edge (TV-style tag)
-                const labelText = `$${(d.price as number).toLocaleString(undefined, { minimumFractionDigits: 1 })}`;
+                const labelText = `$${(d.price as number).toLocaleString(undefined, { minimumFractionDigits: 1 })} `;
                 ctx.font = '10px JetBrains Mono, monospace';
                 const tw = ctx.measureText(labelText).width;
                 const lx = cw - tw - 12;
@@ -772,21 +871,98 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                 const botPrice = Math.min(d.p1.price, d.p2.price);
                 ctx.font = '9px JetBrains Mono, monospace';
                 ctx.fillStyle = d.color.startsWith('rgba') ? '#00b4ff' : d.color;
-                ctx.fillText(`$${topPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}`, bx + 4, by + 10);
-                ctx.fillText(`$${botPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}`, bx + 4, by + bh - 3);
+                ctx.fillText(`$${topPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })} `, bx + 4, by + 10);
+                ctx.fillText(`$${botPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })} `, bx + 4, by + bh - 3);
+
+            } else if (d.type === 'fib') {
+                const x1 = ts.timeToCoordinate(d.p1.time as Time);
+                const y1 = candleSeriesRef.current?.priceToCoordinate(d.p1.price);
+                const x2 = ts.timeToCoordinate(d.p2.time as Time);
+                const y2 = candleSeriesRef.current?.priceToCoordinate(d.p2.price);
+                if (x1 == null || y1 == null || x2 == null || y2 == null) continue;
+
+                const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
+                const diff = d.p2.price - d.p1.price;
+                const startX = x1 as number;
+                const endX = x2 as number;
+                const minX = Math.min(startX, endX);
+                const maxX = Math.max(startX, endX);
+
+                ctx.font = '9px JetBrains Mono, monospace';
+
+                for (const level of levels) {
+                    const price = d.p1.price + diff * level;
+                    const y = candleSeriesRef.current?.priceToCoordinate(price);
+                    if (y == null) continue;
+                    const yy = y as number;
+
+                    // Level line
+                    ctx.strokeStyle = level === 0 || level === 1 ? d.color : `${d.color} 66`;
+                    ctx.lineWidth = level === 0 || level === 1 ? 1.5 : 1;
+                    ctx.setLineDash(level === 0 || level === 1 ? [] : [4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(minX, yy);
+                    ctx.lineTo(maxX, yy);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Label
+                    const label = `${(level * 100).toFixed(1)}% ($${price.toLocaleString(undefined, { minimumFractionDigits: 1 })})`;
+                    ctx.fillStyle = d.color;
+                    ctx.fillText(label, maxX + 4, yy + 3);
+                }
+
+                // Connect diagonal
+                ctx.strokeStyle = `${d.color} 44`;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([2, 4]);
+                ctx.beginPath();
+                ctx.moveTo(startX, y1 as number);
+                ctx.lineTo(endX, y2 as number);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            } else if (d.type === 'ray') {
+                const x1 = ts.timeToCoordinate(d.p1.time as Time);
+                const y1 = candleSeriesRef.current?.priceToCoordinate(d.p1.price);
+                const x2 = ts.timeToCoordinate(d.p2.time as Time);
+                const y2 = candleSeriesRef.current?.priceToCoordinate(d.p2.price);
+                if (x1 == null || y1 == null || x2 == null || y2 == null) continue;
+
+                ctx.strokeStyle = d.color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x1 as number, y1 as number);
+
+                // Calculate ray intersection with chart edge
+                const dx = (x2 as number) - (x1 as number);
+                const dy = (y2 as number) - (y1 as number);
+                if (dx !== 0) {
+                    const edgeX = chartRef.current?.timeScale().width() || 2000;
+                    const t = (edgeX - (x1 as number)) / dx;
+                    if (t > 0) {
+                        ctx.lineTo(edgeX, (y1 as number) + dy * t);
+                    } else {
+                        ctx.lineTo(x2 as number, y2 as number);
+                    }
+                } else {
+                    ctx.lineTo(x2 as number, y2 as number);
+                }
+                ctx.stroke();
             }
         }
 
         // ── Resting Liquidity overlay ──────────────────
-        if (activeIndicators.has('resting_liq') && orderbook && candleSeriesRef.current) {
+        if (activeIndicators.has('resting_liq') && candleSeriesRef.current) {
+            // Retrieve latest orderbook on demand to decouple React renders
+            const currentOrderbook = useMarketStore.getState().orderbook;
             const currentCandleTime = candles[candles.length - 1]?.time || 0;
 
             // Fix: Only recalculate on candle_close (or if empty)
-            if (currentCandleTime !== lastWallUpdateRef.current || cachedWallsRef.current.length === 0) {
+            if ((currentCandleTime !== lastWallUpdateRef.current || cachedWallsRef.current.length === 0) && currentOrderbook) {
                 lastWallUpdateRef.current = currentCandleTime as number;
                 cachedWallsRef.current = [
-                    ...(orderbook.walls?.bid_walls ?? []).map((w: any) => ({ ...w, side: 'bid' as const })),
-                    ...(orderbook.walls?.ask_walls ?? []).map((w: any) => ({ ...w, side: 'ask' as const })),
+                    ...(currentOrderbook.walls?.bid_walls ?? []).map((w: any) => ({ ...w, side: 'bid' as const })),
+                    ...(currentOrderbook.walls?.ask_walls ?? []).map((w: any) => ({ ...w, side: 'ask' as const })),
                 ];
             }
 
@@ -815,8 +991,8 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                 const pulse = isMajor ? Math.sin(Date.now() / 200) * 0.2 : 0;
 
                 const color = wall.side === 'bid'
-                    ? `rgba(0,230,118,${0.3 + (wall.qty / maxWallQty) * 0.5 + pulse})`
-                    : `rgba(255,45,78,${0.3 + (wall.qty / maxWallQty) * 0.5 + pulse})`;
+                    ? `rgba(0, 230, 118, ${0.3 + (wall.qty / maxWallQty) * 0.5 + pulse})`
+                    : `rgba(255, 45, 78, ${0.3 + (wall.qty / maxWallQty) * 0.5 + pulse})`;
 
                 ctx.strokeStyle = color;
                 ctx.lineWidth = thickness;
@@ -833,7 +1009,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                 ctx.font = '8px JetBrains Mono, monospace';
                 ctx.fillStyle = color;
                 ctx.fillText(
-                    `${wall.qty.toFixed(2)} BTC (${distPct.toFixed(2)}%)`,
+                    `${wall.qty.toFixed(2)} BTC(${distPct.toFixed(2)} %)`,
                     cw - 90, yy - 3
                 );
             }
@@ -841,6 +1017,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
 
         // ── Liq Clusters overlay ──────────────────
         if (activeIndicators.has('liq_clusters') && candleSeriesRef.current) {
+            // Retrieve latest liability clusters on demand
             const { liqClusters } = useMarketStore.getState();
 
             for (const cluster of liqClusters) {
@@ -865,7 +1042,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                 // Label
                 ctx.font = '9px JetBrains Mono, monospace';
                 ctx.fillStyle = color;
-                ctx.fillText(`$${(cluster.totalSize / 1e6).toFixed(1)}M`, cw - 50, y - Math.max(4, thickness / 2 + 2));
+                ctx.fillText(`$${(cluster.totalSize / 1e6).toFixed(1)} M`, cw - 50, y - Math.max(4, thickness / 2 + 2));
             }
         }
 
@@ -882,10 +1059,10 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                     const c = candles[i];
                     const d = new Date(c.time * 1000);
                     const h = d.getUTCHours();
-                    const dayKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+                    const dayKey = `${d.getUTCFullYear()} -${d.getUTCMonth()} -${d.getUTCDate()} `;
 
                     const updateSession = (name: string, color: string) => {
-                        const key = `${dayKey}_${name}`;
+                        const key = `${dayKey}_${name} `;
                         if (!sessions[key]) {
                             sessions[key] = { high: c.high, low: c.low, startIdx: i, endIdx: i, color, name };
                         } else {
@@ -945,7 +1122,7 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
         }
 
         ctx.restore();
-    }, [drawings, candles, selectedDrawing, activeIndicators, orderbook]);
+    }, [drawings, candles, selectedDrawing, activeIndicators]);
 
     // ─ Redraw on scroll/zoom
     useEffect(() => {
@@ -963,121 +1140,11 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
         return () => chart.timeScale().unsubscribeVisibleTimeRangeChange(redraw);
     }, []);
 
-    const clearDrawings = useCallback(() => { setDrawings([]); setSelectedDrawing(null); }, []);
-
-    const updateDrawingColor = useCallback((id: string, color: string) => {
-        setDrawings(prev => prev.map(d => d.id === id ? { ...d, color } : d));
-    }, []);
-
-    const deleteDrawing = useCallback((id: string) => {
-        setDrawings(prev => prev.filter(d => d.id !== id));
-        setSelectedDrawing(null);
-    }, []);
-
     // Find selected drawing object
     const selectedDraw = drawings.find(d => d.id === selectedDrawing);
 
     return (
-        <div className="chart-wrapper">
-            {/* ── Drawing Toolbar ──────────────────── */}
-            <div className="chart-toolbar">
-                <div className="toolbar-group">
-                    <span className="toolbar-label">DRAW</span>
-                    <button
-                        className={`tool-btn ${activeTool === 'line' ? 'active' : ''}`}
-                        onClick={() => setActiveTool(activeTool === 'line' ? 'none' : 'line')}
-                        title="Trend Line (click two points)"
-                    >
-                        ╲
-                    </button>
-                    <button
-                        className={`tool-btn ${activeTool === 'hline' ? 'active' : ''}`}
-                        onClick={() => setActiveTool(activeTool === 'hline' ? 'none' : 'hline')}
-                        title="Horizontal Line (click one point)"
-                    >
-                        ─
-                    </button>
-                    <button
-                        className={`tool-btn ${activeTool === 'box' ? 'active' : ''}`}
-                        onClick={() => setActiveTool(activeTool === 'box' ? 'none' : 'box')}
-                        title="Box / Zone (click two corners)"
-                    >
-                        ☐
-                    </button>
-                    {drawings.length > 0 && (
-                        <button className="tool-btn tool-clear" onClick={clearDrawings} title="Clear All">
-                            ✕
-                        </button>
-                    )}
-                </div>
-
-                <div className="toolbar-sep" />
-
-                {/* Drawing list — click to select */}
-                {drawings.length > 0 && (
-                    <div className="toolbar-group">
-                        <span className="toolbar-label">LINES</span>
-                        {drawings.map(d => (
-                            <button
-                                key={d.id}
-                                className={`tool-btn ${selectedDrawing === d.id ? 'active' : ''}`}
-                                onClick={() => setSelectedDrawing(selectedDrawing === d.id ? null : d.id)}
-                                style={{ borderBottom: `2px solid ${d.color}` }}
-                                title={`${d.type} — click to edit`}
-                            >
-                                {d.type === 'hline' ? '─' : d.type === 'line' ? '╲' : '☐'}
-                            </button>
-                        ))}
-                    </div>
-                )}
-
-                <div className="toolbar-sep" />
-
-                <div className="toolbar-group">
-                    <span className="toolbar-label">INDICATORS</span>
-                    {(
-                        [
-                            ['volume', 'VOL'],
-                            ['cvd', 'CVD'],
-                            ['delta', 'Δ'],
-                            ['vwap', 'VWAP'],
-                            ['liq_overlay', 'LIQ'],
-                            ['rsi', 'RSI'],
-                            ['macd', 'MACD'],
-                            ['resting_liq', 'RESTING'],
-                            ['liq_clusters', 'CLUSTERS'],
-                            ['funding_rate', 'FUNDING'],
-                            ['open_interest', 'OI'],
-                            ['session_boxes', 'SESSIONS'],
-                        ] as [IndicatorKey, string][]
-                    ).map(([key, label]) => {
-                        const relevant = INDICATOR_RELEVANCE[key];
-                        const isDimmed = !relevant.includes(timeframe);
-                        return (
-                            <button
-                                key={key}
-                                className={`tool-btn ${activeIndicators.has(key) ? 'active' : ''} ${isDimmed ? 'dimmed' : ''}`}
-                                onClick={() => toggleIndicator(key)}
-                                title={isDimmed ? `⚠ ${label} is less reliable on ${timeframe}` : label}
-                            >
-                                {label}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                <div className="toolbar-sep" />
-
-                <div className="toolbar-group">
-                    <button
-                        className={`tool-btn ${usePerfStore.getState().showPerfHud ? 'active' : ''}`}
-                        onClick={() => usePerfStore.getState().toggleHud()}
-                        title="Toggle Performance HUD"
-                    >
-                        ⚡
-                    </button>
-                </div>
-            </div>
+        <div className="chart-wrapper" style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
 
             {/* ── Chart + Canvas Overlay ────────────── */}
             <div className="chart-container-wrap">
@@ -1086,7 +1153,13 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                 <canvas
                     ref={canvasRef}
                     className="chart-canvas-overlay"
-                    style={{ pointerEvents: activeTool !== 'none' ? 'none' : 'none' }}
+                    style={{
+                        pointerEvents: 'none',
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        zIndex: 10
+                    }}
                 />
 
                 {/* ── Drawing Settings Modal ──────────── */}
@@ -1094,14 +1167,16 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                     <div className="drawing-settings-modal">
                         <div className="drawing-settings-header">
                             <span>{selectedDraw.type === 'line' ? 'Trend Line' : selectedDraw.type === 'hline' ? 'Horizontal Line' : 'Box'}</span>
-                            <button className="drawing-settings-close" onClick={() => setSelectedDrawing(null)}>✕</button>
+                            <button className="drawing-settings-close" onClick={() => onSelectDrawing(null)}>✕</button>
                         </div>
                         <div className="drawing-settings-row">
                             <label>Color</label>
                             <input
                                 type="color"
                                 value={selectedDraw.color.startsWith('#') ? selectedDraw.color : '#00b4ff'}
-                                onChange={(e) => updateDrawingColor(selectedDraw.id, e.target.value)}
+                                onChange={(e) => {
+                                    setDrawings(prev => prev.map(d => d.id === selectedDraw.id ? { ...d, color: e.target.value } : d));
+                                }}
                             />
                         </div>
                         {'price' in selectedDraw && (
@@ -1113,8 +1188,11 @@ export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
                             </div>
                         )}
                         <div className="drawing-settings-actions">
-                            <button onClick={() => setSelectedDrawing(null)}>OK</button>
-                            <button className="btn-delete" onClick={() => deleteDrawing(selectedDraw.id)}>Delete</button>
+                            <button onClick={() => onSelectDrawing(null)}>OK</button>
+                            <button className="btn-delete" onClick={() => {
+                                setDrawings(prev => prev.filter(d => d.id !== selectedDraw.id));
+                                onSelectDrawing(null);
+                            }}>Delete</button>
                         </div>
                     </div>
                 )}

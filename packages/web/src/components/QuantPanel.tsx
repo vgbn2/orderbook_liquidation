@@ -5,101 +5,124 @@ export function QuantPanel() {
 
     if (!quantSnapshot) {
         return (
-            <div className="panel quant-panel">
-                <div className="panel-header">
-                    <span className="panel-title">MACRO-QUANT</span>
+            <div className="panel-section">
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+                    AWAITING ANALYSIS...
                 </div>
-                <div className="quant-loading">Awaiting first analysis cycle…</div>
             </div>
         );
     }
 
-    const { meta, sigmaGrid, quantiles, macroBreakdown, currentPrice } = quantSnapshot;
+    const { meta, sigmaGrid, quantiles, macroBreakdown } = quantSnapshot;
 
     return (
-        <div className="panel quant-panel">
-            <div className="panel-header">
-                <span className="panel-title">MACRO-QUANT</span>
-                <span className="quant-price">${currentPrice?.toLocaleString()}</span>
-            </div>
-
-            {/* Macro Breakdown */}
-            <div className="quant-section">
-                <div className="quant-section-title">MACRO IMPACT</div>
-                <table className="quant-table">
-                    <thead>
-                        <tr>
-                            <th>Asset</th>
-                            <th>Corr</th>
-                            <th>Z</th>
-                            <th>Impact</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {macroBreakdown?.map((m: any) => (
-                            <tr key={m.ticker}>
-                                <td className="quant-ticker">{m.ticker}</td>
-                                <td className={m.correlation > 0 ? 'text-bull' : 'text-bear'}>
-                                    {m.correlation > 0 ? '+' : ''}{m.correlation.toFixed(2)}
-                                </td>
-                                <td className={m.zScore > 0 ? 'text-bull' : 'text-bear'}>
-                                    {m.zScore > 0 ? '+' : ''}{m.zScore.toFixed(2)}
-                                </td>
-                                <td className={m.impact > 0 ? 'text-bull' : 'text-bear'}>
-                                    {m.impact > 0 ? '+' : ''}{m.impact.toFixed(3)}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                <div className="quant-drift-summary">
-                    <span>Drift: {meta?.adjustedDrift > 0 ? '+' : ''}{meta?.adjustedDrift?.toFixed(4)}%/d</span>
-                    <span>σ/d: {meta?.stepVolatility?.toFixed(3)}%</span>
+        <>
+            {/* MARKET REGIME */}
+            <div className="panel-section">
+                <div className="p-head">
+                    <span>MARKET REGIME</span>
+                    <span style={{ color: 'var(--accent)' }}>VOLATILE</span>
                 </div>
-            </div>
-
-            {/* Key Quantiles */}
-            <div className="quant-section">
-                <div className="quant-section-title">KEY QUANTILES ({meta?.horizon}d)</div>
-                <div className="quant-quantiles">
-                    {quantiles && Object.entries(quantiles).map(([key, val]: [string, any]) => {
-                        const label = key === 'p5' ? '5th' : key === 'p25' ? '25th' : key === 'p50' ? 'Median' : key === 'p75' ? '75th' : '95th';
-                        return (
-                            <div key={key} className="quant-quantile-row">
-                                <span className="quant-q-label">{label}</span>
-                                <span className="quant-q-price">${val.price?.toLocaleString()}</span>
-                                <span className={`quant-q-pct ${val.pctMove >= 0 ? 'text-bull' : 'text-bear'}`}>
-                                    {val.pctMove >= 0 ? '+' : ''}{val.pctMove?.toFixed(2)}%
-                                </span>
+                <div className="p-body">
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                        <div className="stat-card" style={{ flex: 1 }}>
+                            <div className="stat-label">DRIFT (1D)</div>
+                            <div className={`stat-value ${meta?.adjustedDrift > 0 ? 'pos' : meta?.adjustedDrift < 0 ? 'neg' : ''}`}>
+                                {meta?.adjustedDrift > 0 ? '+' : ''}{meta?.adjustedDrift?.toFixed(3)}%
                             </div>
-                        );
-                    })}
+                        </div>
+                        <div className="stat-card" style={{ flex: 1 }}>
+                            <div className="stat-label">VOLATILITY</div>
+                            <div className="stat-value">{meta?.stepVolatility?.toFixed(3)}%</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Sigma Grid (compact) */}
-            <div className="quant-section">
-                <div className="quant-section-title">DISTRIBUTION</div>
-                <div className="quant-sigma-grid">
-                    {sigmaGrid?.map((row: any) => {
-                        const barWidth = Math.min(row.probability, 100);
-                        const isAbove = row.pctMove >= 0;
-                        return (
-                            <div key={row.sigma} className="sigma-row">
-                                <span className="sigma-level">{row.sigma > 0 ? '+' : ''}{row.sigma}σ</span>
-                                <span className="sigma-price">${row.price?.toLocaleString()}</span>
-                                <div className="sigma-bar-wrap">
+            {/* MACRO BREAKDOWN (CORRELATIONS) */}
+            <div className="panel-section">
+                <div className="p-head">
+                    <span>CORRELATIONS</span>
+                </div>
+                <div className="p-body">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>
+                        <thead>
+                            <tr style={{ background: 'var(--bg-overlay)' }}>
+                                <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-muted)' }}>TICKER</th>
+                                <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--text-muted)' }}>CORR</th>
+                                <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--text-muted)' }}>Z</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {macroBreakdown?.map((m: any) => (
+                                <tr key={m.ticker} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                    <td style={{ padding: '4px 8px', fontWeight: 'bold' }}>{m.ticker}</td>
+                                    <td style={{ textAlign: 'right', padding: '4px 8px', color: m.correlation > 0 ? 'var(--positive)' : 'var(--negative)' }}>
+                                        {m.correlation > 0 ? '+' : ''}{m.correlation.toFixed(2)}
+                                    </td>
+                                    <td style={{ textAlign: 'right', padding: '4px 8px', color: m.zScore > 0 ? 'var(--positive)' : 'var(--negative)' }}>
+                                        {m.zScore > 0 ? '+' : ''}{m.zScore.toFixed(2)}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* QUANTILES */}
+            <div className="panel-section">
+                <div className="p-head">
+                    <span>QUANTILES ({meta?.horizon}D)</span>
+                </div>
+                <div className="p-body">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        {quantiles && Object.entries(quantiles).map(([key, val]: [string, any]) => {
+                            const label = key === 'p5' ? 'P05' : key === 'p25' ? 'P25' : key === 'p50' ? 'MED' : key === 'p75' ? 'P75' : 'P95';
+                            return (
+                                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-raised)', padding: '4px 8px', borderRadius: '4px' }}>
+                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>{label}</span>
+                                    <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace' }}>${val.price?.toLocaleString()}</span>
+                                    <span style={{ fontSize: '10px', color: val.pctMove >= 0 ? 'var(--positive)' : 'var(--negative)', fontFamily: 'JetBrains Mono, monospace' }}>
+                                        {val.pctMove >= 0 ? '+' : ''}{val.pctMove?.toFixed(1)}%
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+
+            {/* DISTRIBUTION */}
+            <div className="panel-section">
+                <div className="p-head">
+                    <span>SIGMA DISTRIBUTION</span>
+                </div>
+                <div className="p-body">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {sigmaGrid?.map((row: any) => (
+                            <div key={row.sigma} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ width: '24px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                                    {row.sigma > 0 ? '+' : ''}{row.sigma}σ
+                                </span>
+                                <div style={{ flex: 1, height: '6px', background: 'var(--bg-overlay)', borderRadius: '3px', overflow: 'hidden' }}>
                                     <div
-                                        className={`sigma-bar ${isAbove ? 'bull' : 'bear'}`}
-                                        style={{ width: `${barWidth}%` }}
+                                        style={{
+                                            width: `${Math.min(row.probability, 100)}%`,
+                                            height: '100%',
+                                            background: row.pctMove >= 0 ? 'var(--positive)' : 'var(--negative)',
+                                            opacity: 0.6
+                                        }}
                                     />
                                 </div>
-                                <span className="sigma-prob">{row.probability?.toFixed(0)}%</span>
+                                <span style={{ width: '60px', textAlign: 'right', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>
+                                    ${(row.price / 1000).toFixed(1)}K
+                                </span>
                             </div>
-                        );
-                    })}
+                        ))}
+                    </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 }

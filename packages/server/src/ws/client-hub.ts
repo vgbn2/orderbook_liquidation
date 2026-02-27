@@ -15,7 +15,7 @@ interface ClientConnection {
     lastActivity: number;
 }
 
-const MAX_BUFFER = 64 * 1024; // 64KB — drop messages if client can't keep up
+const MAX_BUFFER = 1024 * 1024; // 1MB — drop messages if client can't keep up
 
 export class ClientHub {
     private clients = new Map<string, ClientConnection>();

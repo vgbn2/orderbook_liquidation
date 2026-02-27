@@ -1,9 +1,11 @@
 import { useMarketStore } from '../stores/marketStore';
 import { usePerfStore } from '../stores/usePerfStore';
 import { useRef, useEffect, useCallback } from 'react';
+import { createWorker } from '../engines/websocketWorker';
 
 export function useWebSocket() {
     const wsRef = useRef<WebSocket | null>(null);
+    const workerRef = useRef<Worker | null>(null);
     const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reconnectAttempts = useRef(0);
     const setMetrics = usePerfStore((s) => s.setMetrics);
@@ -11,8 +13,11 @@ export function useWebSocket() {
     const lastFreqUpdate = useRef(performance.now());
     const lastDelayUpdate = useRef(performance.now());
 
+    // Batching state
+    const reqFrameRef = useRef<number | null>(null);
+
     const {
-        symbol, setSymbol,
+        symbol, setSymbol, timeframe,
         setConnected, addCandle, updateLastCandle, setLastPrice,
         setOrderbook, setOptions, addOptionTrade, setLiquidations,
         addLiquidation, setFundingRates, setOpenInterest,
@@ -29,6 +34,15 @@ export function useWebSocket() {
         const ws = new WebSocket(url);
         wsRef.current = ws;
 
+        if (!workerRef.current) {
+            workerRef.current = createWorker();
+            workerRef.current.onmessage = (e) => {
+                if (e.data.type === 'PARSED_MESSAGE') {
+                    handleParsedMessage(e.data.payload);
+                }
+            };
+        }
+
         ws.onopen = () => {
             setConnected(true);
             reconnectAttempts.current = 0;
@@ -37,7 +51,7 @@ export function useWebSocket() {
             ws.send(JSON.stringify({
                 action: 'subscribe',
                 topics: [
-                    `candles.binance.${symbol.toUpperCase()}`,
+                    `candles.binance.${symbol.toUpperCase()}.${timeframe}`,
                     'orderbook.aggregated',
                     'options.analytics',
                     'liquidations',
@@ -59,21 +73,12 @@ export function useWebSocket() {
                 lastFreqUpdate.current = now;
             }
 
-            try {
-                const msg = JSON.parse(event.data);
-
-                // Calculate processing delay — sample every 2s, not every msg
-                if (msg.ts) {
-                    const elapsed = performance.now() - lastDelayUpdate.current;
-                    if (elapsed > 2000) {
-                        setMetrics({ procDelay: Date.now() - msg.ts });
-                        lastDelayUpdate.current = performance.now();
-                    }
-                }
-
-                handleMessage(msg);
-            } catch {
-                // Ignore malformed messages
+            // Offload to Web Worker instead of main thread JSON.parse
+            if (workerRef.current) {
+                workerRef.current.postMessage({
+                    type: 'WS_MESSAGE',
+                    payload: event.data
+                });
             }
         };
 
@@ -87,7 +92,16 @@ export function useWebSocket() {
         };
     }, [setConnected]);
 
-    const handleMessage = useCallback((msg: { topic: string; data: unknown }) => {
+    const handleParsedMessage = useCallback((msg: { topic: string; data: unknown; ts?: number }) => {
+        // Calculate processing delay
+        if (msg.ts) {
+            const elapsed = performance.now() - lastDelayUpdate.current;
+            if (elapsed > 2000) {
+                setMetrics({ procDelay: Date.now() - msg.ts });
+                lastDelayUpdate.current = performance.now();
+            }
+        }
+
         switch (msg.topic) {
             case 'replay': {
                 const data = msg.data as any;
@@ -107,14 +121,18 @@ export function useWebSocket() {
             default: {
                 if (isReplayMode) return;
 
-                switch (msg.topic) {
-                    case 'candles.binance.BTCUSDT': {
-                        const candle = msg.data as any;
-                        if (candle.isUpdate) updateLastCandle(candle);
-                        else addCandle(candle);
-                        setLastPrice(candle.close);
-                        break;
+                if (msg.topic === `candles.binance.${symbol.toUpperCase()}.${timeframe}`) {
+                    const candle = msg.data as any;
+                    if ((msg as any)._cvd !== undefined) {
+                        candle.cvd = (msg as any)._cvd;
                     }
+                    if (candle.isUpdate) updateLastCandle(candle);
+                    else addCandle(candle);
+                    setLastPrice(candle.close);
+                    return;
+                }
+
+                switch (msg.topic) {
                     case 'orderbook.aggregated':
                         setOrderbook(msg.data as any);
                         break;
@@ -150,7 +168,18 @@ export function useWebSocket() {
                         break;
                     case 'symbol_changed':
                         if (msg.data && (msg.data as any).symbol) {
-                            setSymbol((msg.data as any).symbol);
+                            const newSym = (msg.data as any).symbol;
+                            setSymbol(newSym);
+                            if (wsRef.current?.readyState === WebSocket.OPEN) {
+                                wsRef.current.send(JSON.stringify({
+                                    action: 'subscribe',
+                                    topics: [`candles.binance.${newSym.toUpperCase()}.${timeframe}`]
+                                }));
+                                wsRef.current.send(JSON.stringify({
+                                    action: 'unsubscribe',
+                                    topics: [`candles.binance.${symbol.toUpperCase()}.${timeframe}`]
+                                }));
+                            }
                         }
                         break;
                 }
@@ -160,7 +189,7 @@ export function useWebSocket() {
         addCandle, updateLastCandle, setLastPrice, setOrderbook, setOptions, addOptionTrade,
         setLiquidations, addLiquidation, setFundingRates, setOpenInterest, setVwaf,
         setConfluenceZones, addTrade, setReplayMode, setReplayTimestamp, isReplayMode, setQuantSnapshot,
-        setSymbol
+        setSymbol, symbol, timeframe, setMetrics
     ]);
 
     const scheduleReconnect = useCallback(() => {
@@ -182,8 +211,32 @@ export function useWebSocket() {
             if (wsRef.current) {
                 wsRef.current.close(1000, 'Component unmount');
             }
+            if (workerRef.current) {
+                workerRef.current.terminate();
+                workerRef.current = null;
+            }
+            if (reqFrameRef.current) {
+                cancelAnimationFrame(reqFrameRef.current);
+            }
         };
     }, [connect]);
+
+    // Update subscriptions on timeframe change
+    useEffect(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+                action: 'subscribe',
+                topics: [`candles.binance.${symbol.toUpperCase()}.${timeframe}`]
+            }));
+
+            // Unsubscribe from other timeframes
+            const others = ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'].filter(t => t !== timeframe);
+            wsRef.current.send(JSON.stringify({
+                action: 'unsubscribe',
+                topics: others.map(t => `candles.binance.${symbol.toUpperCase()}.${t}`)
+            }));
+        }
+    }, [timeframe, symbol]);
 
     const startReplay = useCallback((config: { startTime: number; endTime: number; speed: number }) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {

@@ -27,8 +27,12 @@ export class BinanceAdapter implements ExchangeAdapter {
     private reconnectAttempts = 0;
     private lastKlineBroadcast = 0;
     private symbol = 'btcusdt';
-    private interval = '1m';
+    private intervals = ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'];
     private pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    // Trade batching state
+    private tradeBatch: any[] = [];
+    private tradeBroadcastTimer: ReturnType<typeof setInterval> | null = null;
 
     /**
      * Fetch historical klines from Binance REST API.
@@ -66,15 +70,15 @@ export class BinanceAdapter implements ExchangeAdapter {
      */
     async connect(): Promise<void> {
         return new Promise((resolve) => {
-            const stream = `${this.symbol}@kline_${this.interval}`;
-            const url = `${WS_BASE}/${stream}`;
+            const streams = this.intervals.map(i => `${this.symbol}@kline_${i}`).join('/');
+            const url = `${WS_BASE}/stream?streams=${streams}`;
 
-            logger.info({ stream }, 'Connecting to Binance kline stream...');
+            logger.info({ streams }, 'Connecting to Binance kline streams...');
 
             this.ws = new WebSocket(url, { handshakeTimeout: 10_000 });
 
             this.ws.on('open', () => {
-                logger.info('Binance kline stream connected');
+                logger.info('Binance kline streams connected');
                 this.health = 'healthy';
                 this.reconnectAttempts = 0;
                 resolve();
@@ -83,8 +87,13 @@ export class BinanceAdapter implements ExchangeAdapter {
             this.ws.on('message', (raw) => {
                 try {
                     const msg = JSON.parse(raw.toString());
-                    if (msg.e === 'kline') {
-                        this._handleKline(msg.k);
+                    // Combined stream format: { stream: "btcusdt@kline_1m", data: { e: "kline", k: { ... } } }
+                    if (msg.data && msg.data.e === 'kline') {
+                        const interval = msg.data.k.i;
+                        this._handleKline(msg.data.k, interval);
+                    } else if (msg.e === 'kline') {
+                        // Fallback just in case
+                        this._handleKline(msg.k, msg.k.i);
                     }
                 } catch (err) {
                     logger.error({ err }, 'Binance kline parse error');
@@ -119,8 +128,9 @@ export class BinanceAdapter implements ExchangeAdapter {
         c: string;       // close
         v: string;       // volume
         x: boolean;      // is this kline closed?
-    }): void {
-        const candle: Candle & { isUpdate?: boolean } = {
+        i: string;       // interval
+    }, interval: string): void {
+        const candle: Candle & { isUpdate?: boolean; interval?: string } = {
             time: Math.floor(k.t / 1000),
             open: parseFloat(k.o),
             high: parseFloat(k.h),
@@ -129,27 +139,30 @@ export class BinanceAdapter implements ExchangeAdapter {
             volume: parseFloat(k.v),
             exchange: 'binance',
             isUpdate: !k.x,
+            interval: interval
         };
 
-        // Broadcast to frontend (throttle intra-candle updates to 500ms)
+        // Broadcast to frontend
         const now = Date.now();
-        if (k.x || now - this.lastKlineBroadcast > 500) {
-            clientHub.broadcast('candles.binance.BTCUSDT' as any, candle);
-            this.lastKlineBroadcast = now;
+        // Throttle updates for 1m interval to 500ms, for others we can just send
+        const is1m = interval === '1m';
+        if (k.x || !is1m || now - this.lastKlineBroadcast > 500) {
+            clientHub.broadcast(`candles.binance.${this.symbol.toUpperCase()}.${interval}` as any, candle);
+            if (is1m) this.lastKlineBroadcast = now;
         }
 
         // Cache latest price in Redis
-        redis.set('price:BTCUSDT', candle.close.toString()).catch(() => { });
+        redis.set(`price:${this.symbol.toUpperCase()}`, candle.close.toString()).catch(() => { });
 
         // Persist closed candles to TimescaleDB
-        if (k.x) {
-            // Feed AMD Reversal Detector on candle close
+        if (k.x && interval === '1m') {
+            // Feed AMD Reversal Detector on candle close (only for 1m)
             amdDetector.onCandle(candle);
             query(
                 `INSERT INTO ohlcv_candles (time, exchange, symbol, timeframe, open, high, low, close, volume)
          VALUES (to_timestamp($1), $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT DO NOTHING`,
-                [candle.time, 'binance', 'BTCUSDT', '1m', candle.open, candle.high, candle.low, candle.close, candle.volume],
+                [candle.time, 'binance', this.symbol.toUpperCase(), '1m', candle.open, candle.high, candle.low, candle.close, candle.volume],
             ).catch((err) => logger.error({ err }, 'Failed to persist candle'));
         }
     }
@@ -168,6 +181,10 @@ export class BinanceAdapter implements ExchangeAdapter {
         if (this.depthReconnectTimer) clearTimeout(this.depthReconnectTimer);
         if (this.tradesReconnectTimer) clearTimeout(this.tradesReconnectTimer);
         if (this.pollTimer) clearInterval(this.pollTimer);
+        if (this.tradeBroadcastTimer) {
+            clearInterval(this.tradeBroadcastTimer);
+            this.tradeBroadcastTimer = null;
+        }
         if (this.ws) {
             this.ws.removeAllListeners();
             this.ws.close(1000, 'Shutdown');
@@ -303,6 +320,15 @@ export class BinanceAdapter implements ExchangeAdapter {
 
             this.wsTrades.on('open', () => {
                 logger.info('Binance trades stream connected');
+
+                // Start batched broadcast loop (every 250ms)
+                if (this.tradeBroadcastTimer) clearInterval(this.tradeBroadcastTimer);
+                this.tradeBroadcastTimer = setInterval(() => {
+                    if (this.tradeBatch.length > 0) {
+                        clientHub.broadcast('trades' as any, this.tradeBatch);
+                        this.tradeBatch = [];
+                    }
+                }, 250);
             });
 
             this.wsTrades.on('message', (raw) => {
@@ -315,11 +341,11 @@ export class BinanceAdapter implements ExchangeAdapter {
                             qty: parseFloat(msg.q),
                             side: msg.m ? 'sell' : 'buy', // m: true means buyer is market maker -> sell
                             exchange: 'binance',
-                            symbol: 'BTCUSDT'
+                            symbol: this.symbol.toUpperCase()
                         };
 
-                        // Broadcast trades
-                        clientHub.broadcast('trades' as any, trade);
+                        // Batch trades instead of broadcasting immediately
+                        this.tradeBatch.push(trade);
 
                         // Persist to TimescaleDB for Replay
                         query(`

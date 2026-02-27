@@ -97,6 +97,8 @@ interface MarketState {
     // Candles
     symbol: string;
     setSymbol: (symbol: string) => void;
+    timeframe: string;
+    setTimeframe: (tf: string) => void;
 
     candles: CandleData[];
     setCandles: (candles: CandleData[]) => void;
@@ -135,7 +137,7 @@ interface MarketState {
 
     // Trades
     trades: TradeData[];
-    addTrade: (t: TradeData) => void;
+    addTrade: (t: TradeData | TradeData[]) => void;
 
     // Replay
     isReplayMode: boolean;
@@ -146,6 +148,10 @@ interface MarketState {
     // Quant
     quantSnapshot: any | null;
     setQuantSnapshot: (s: any) => void;
+
+    // Multi-Scale CVD
+    multiTfCvd: Record<string, { time: number; value: number }[]>;
+    setMultiTfCvd: (tf: string, data: { time: number; value: number }[]) => void;
 }
 
 export const useMarketStore = create<MarketState>((set, get) => ({
@@ -164,30 +170,33 @@ export const useMarketStore = create<MarketState>((set, get) => ({
 
     symbol: 'BTCUSDT',
     setSymbol: (symbol) => set({ symbol }),
+    timeframe: '1h',
+    setTimeframe: (timeframe) => set({ timeframe }),
 
     candles: [],
     setCandles: (candles) => {
         if (candles.length > 0) {
             const last = candles[candles.length - 1];
-            set({ candles, lastPrice: last.close });
+            set({ candles: [...candles], lastPrice: last.close });
         } else {
-            set({ candles });
+            set({ candles: [] });
         }
     },
     addCandle: (candle) =>
         set((s) => {
-            s.candles.push(candle);
-            if (s.candles.length > 1500) s.candles.shift();
-            return { candles: s.candles, lastPrice: candle.close };
+            const newCandles = [...s.candles, candle];
+            if (newCandles.length > 1500) newCandles.shift();
+            return { candles: newCandles, lastPrice: candle.close };
         }),
     updateLastCandle: (candle) =>
         set((s) => {
-            if (s.candles.length > 0) {
-                s.candles[s.candles.length - 1] = candle;
+            const newCandles = [...s.candles];
+            if (newCandles.length > 0) {
+                newCandles[newCandles.length - 1] = candle;
             } else {
-                s.candles.push(candle);
+                newCandles.push(candle);
             }
-            return { candles: s.candles, lastPrice: candle.close };
+            return { candles: newCandles, lastPrice: candle.close };
         }),
 
     orderbook: null,
@@ -228,9 +237,10 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     trades: [],
     addTrade: (t) =>
         set((s) => {
-            s.trades.unshift(t);
+            const newTrades = Array.isArray(t) ? t : [t];
+            s.trades.unshift(...newTrades);
             if (s.trades.length > 50) s.trades.length = 50;
-            return { trades: s.trades };
+            return { trades: [...s.trades] };
         }),
 
     isReplayMode: false,
@@ -240,4 +250,19 @@ export const useMarketStore = create<MarketState>((set, get) => ({
 
     quantSnapshot: null,
     setQuantSnapshot: (s) => set({ quantSnapshot: s }),
+
+    multiTfCvd: (() => {
+        try {
+            const saved = localStorage.getItem('terminus_multi_tf_cvd');
+            return saved ? JSON.parse(saved) : {};
+        } catch (e) {
+            return {};
+        }
+    })(),
+    setMultiTfCvd: (tf, data) =>
+        set((s) => {
+            const next = { ...s.multiTfCvd, [tf]: data.slice(-500) }; // Keep last 500 points for persistence efficiency
+            localStorage.setItem('terminus_multi_tf_cvd', JSON.stringify(next));
+            return { multiTfCvd: next };
+        }),
 }));

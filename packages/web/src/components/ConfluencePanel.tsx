@@ -1,4 +1,5 @@
 import { useMarketStore } from '../stores/marketStore';
+import { PanelSection, Badge } from './UI';
 
 const SIGNAL_ICONS: Record<string, string> = {
     OB_BID_WALL: '🟢',
@@ -11,10 +12,10 @@ const SIGNAL_ICONS: Record<string, string> = {
     VWAF_SHORT_BIAS: '📉',
 };
 
-const STRENGTH_COLORS: Record<string, string> = {
-    high: '#00e87a',
-    medium: '#ff8c1a',
-    low: '#6b6b80',
+const STRENGTH_TYPES: Record<string, any> = {
+    high: 'hot',
+    medium: 'live',
+    low: 'pinned',
 };
 
 interface ConfluenceZoneData {
@@ -31,58 +32,61 @@ export function ConfluencePanel() {
 
     if (!zones || zones.length === 0) {
         return (
-            <div className="panel">
-                <div className="panel-header">
-                    <span className="panel-title">CONFLUENCE ZONES</span>
-                    <span className="panel-badge">LOADING</span>
+            <PanelSection title="CONFLUENCE ZONES" isCollapsible defaultCollapsed={false}>
+                <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
+                    AWAITING ZONES...
                 </div>
-                <p style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                    Waiting for data...
-                </p>
-            </div>
+            </PanelSection>
         );
     }
 
     return (
-        <div className="panel confluence-panel">
-            <div className="panel-header">
-                <span className="panel-title">CONFLUENCE ZONES</span>
-                <span className="panel-badge" style={{ color: '#00e87a' }}>
-                    {zones.length} ZONES
-                </span>
-            </div>
+        <PanelSection
+            title="CONFLUENCE ZONES"
+            isCollapsible
+            defaultCollapsed={false}
+        >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Badge type="live" label={`${zones.length} ZONES`} />
+                    <span className="terminus-label" style={{ color: 'var(--color-accent)' }}>CLUSTERED DATA</span>
+                </div>
 
-            <div className="conf-zones">
-                {zones.map((zone: ConfluenceZoneData, i: number) => {
-                    const color = STRENGTH_COLORS[zone.strength] || '#6b6b80';
-                    return (
-                        <div key={i} className="conf-zone" style={{ borderLeftColor: color }}>
-                            <div className="conf-zone-header">
-                                <span className="conf-zone-price">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    {zones.map((zone: ConfluenceZoneData, i: number) => (
+                        <div key={i} style={{
+                            background: 'var(--color-bg-raised)',
+                            padding: 'var(--space-2)',
+                            borderRadius: 'var(--radius-sm)',
+                            borderLeft: `3px solid var(--color-${STRENGTH_TYPES[zone.strength] === 'hot' ? 'negative' : STRENGTH_TYPES[zone.strength] === 'live' ? 'positive' : 'border-medium'})`
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                                <span className="terminus-value" style={{ fontSize: 'var(--text-md)' }}>
                                     ${zone.center.toLocaleString()}
                                 </span>
-                                <span className="conf-zone-score" style={{ color }}>
-                                    {zone.score.toFixed(0)}pts
-                                </span>
-                                <span
-                                    className="conf-zone-strength"
-                                    style={{ background: color + '22', color, borderColor: color + '44' }}
-                                >
-                                    {zone.strength.toUpperCase()}
-                                </span>
+                                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>{zone.score.toFixed(0)} PTS</span>
+                                    <Badge type={STRENGTH_TYPES[zone.strength]} label={zone.strength.toUpperCase()} />
+                                </div>
                             </div>
-                            <div className="conf-zone-signals">
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
                                 {zone.reasons.map((r, j) => (
-                                    <span key={j} className="conf-signal" title={r.detail || r.signal}>
-                                        {SIGNAL_ICONS[r.signal] || '●'}{' '}
-                                        {r.signal.replace(/_/g, ' ')}
+                                    <span key={j} style={{
+                                        fontSize: '9px',
+                                        color: 'var(--color-text-primary)',
+                                        background: 'var(--color-bg-overlay)',
+                                        padding: '2px 6px',
+                                        borderRadius: '2px',
+                                        fontFamily: 'var(--font-mono)'
+                                    }} title={r.detail || r.signal}>
+                                        {SIGNAL_ICONS[r.signal] || '●'} {r.signal.replace(/_/g, ' ')}
                                     </span>
                                 ))}
                             </div>
                         </div>
-                    );
-                })}
+                    ))}
+                </div>
             </div>
-        </div>
+        </PanelSection>
     );
 }

@@ -1,17 +1,16 @@
 import { useMarketStore } from '../stores/marketStore';
+import { PanelSection, StatCard, Badge } from './UI';
 
 export function LiquidationPanel() {
     const liqData = useMarketStore((s) => s.liquidations);
 
     if (!liqData) {
         return (
-            <div className="panel">
-                <div className="panel-header">
-                    <span className="panel-title">LIQUIDATION CLUSTERS</span>
-                    <span className="panel-badge">LIVE</span>
+            <PanelSection title="LIQUIDATION CLUSTERS" isCollapsible defaultCollapsed={false}>
+                <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
+                    AWAITING LIQUIDATIONS...
                 </div>
-                <p className="ob-waiting">Waiting for data...</p>
-            </div>
+            </PanelSection>
         );
     }
 
@@ -29,41 +28,51 @@ export function LiquidationPanel() {
     const maxPrice = heatmap.length > 0 ? heatmap[heatmap.length - 1].price : 0;
 
     return (
-        <div className="panel liq-panel">
-            <div className="panel-header">
-                <span className="panel-title">LIQUIDATION CLUSTERS</span>
-                <span className="panel-badge">{event_count} events</span>
-            </div>
+        <PanelSection
+            title="LIQUIDATION CLUSTERS"
+            isCollapsible
+            defaultCollapsed={false}
+        >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Badge type="live" label={`${event_count} EVENTS`} />
+                    <span className="terminus-label" style={{ color: 'var(--color-negative)' }}>HOT FLOW</span>
+                </div>
 
-            {/* Heatmap bars */}
-            <div className="liq-bars">
-                {heatmap.map((bucket: { price: number; long_liq_usd: number; short_liq_usd: number; total: number }) => {
-                    const h = Math.max(3, (bucket.total / maxTotal) * 28);
-                    const intensity = bucket.total / maxTotal;
-                    // Color gradient: warm yellow → hot red
-                    const r = Math.round(254 + (220 - 254) * intensity);
-                    const g = Math.round(240 + (38 - 240) * intensity);
-                    const b = Math.round(138 + (38 - 138) * intensity);
-                    return (
-                        <div
-                            key={bucket.price}
-                            className="liq-bar"
-                            style={{
-                                height: `${h}px`,
-                                background: `rgb(${r},${g},${b})`,
-                            }}
-                            title={`${bucket.price.toLocaleString()}: Long ${fmtMoney(bucket.long_liq_usd)} | Short ${fmtMoney(bucket.short_liq_usd)}`}
-                        />
-                    );
-                })}
-            </div>
+                <StatCard
+                    label="ESTIMATED TOTAL LIQ"
+                    value={fmtMoney(total_usd)}
+                    valueColor="var(--color-negative)"
+                />
 
-            {/* Labels */}
-            <div className="liq-labels">
-                <span>${minPrice.toLocaleString()}</span>
-                <span className="liq-total">{fmtMoney(total_usd)} est. liq</span>
-                <span>${maxPrice.toLocaleString()}</span>
+                {/* Heatmap bars */}
+                <div>
+                    <span className="terminus-label" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>INTENSITY MAP</span>
+                    <div style={{ height: '40px', display: 'flex', alignItems: 'flex-end', gap: '1px', background: 'var(--color-bg-overlay)', padding: '2px', borderRadius: 'var(--radius-sm)' }}>
+                        {heatmap.map((bucket: { price: number; total: number }) => {
+                            const intensity = bucket.total / maxTotal;
+                            return (
+                                <div
+                                    key={bucket.price}
+                                    style={{
+                                        flex: 1,
+                                        height: `${Math.max(4, intensity * 36)}px`,
+                                        background: intensity > 0.8 ? 'var(--color-negative)' : intensity > 0.4 ? 'var(--color-warning)' : 'var(--color-accent)',
+                                        opacity: 0.8,
+                                        borderRadius: '1px'
+                                    }}
+                                    title={`$${bucket.price.toLocaleString()}: ${fmtMoney(bucket.total)}`}
+                                />
+                            );
+                        })}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'var(--space-1)', fontSize: '9px', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        <span>${(minPrice / 1000).toFixed(1)}K</span>
+                        <span>CLUSTER RANGE</span>
+                        <span>${(maxPrice / 1000).toFixed(1)}K</span>
+                    </div>
+                </div>
             </div>
-        </div>
+        </PanelSection>
     );
 }
