@@ -6,6 +6,7 @@ export interface BacktestConfig {
     sellCondition: string; // e.g., "close < sma20"
     stopLossPct?: number; // e.g., 2.0 = 2%
     takeProfitPct?: number; // e.g., 5.0 = 5%
+    initialBalance?: number;
     indicators: {
         name: string;
         type: 'SMA' | 'EMA' | 'RSI';
@@ -29,6 +30,10 @@ export interface BacktestResult {
     totalPnL: number;
     winRate: number;
     totalTrades: number;
+    initialBalance: number;
+    finalBalance: number;
+    netPnL: number;
+    sharpeRatio: number;
 }
 
 // Simple SMA calculator
@@ -139,11 +144,34 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
         }
 
         const winningTrades = trades.filter(t => t.pnl > 0);
+        const initialBalance = config.initialBalance || 10000;
+        let currentBalance = initialBalance;
+        const returns: number[] = [];
+
+        trades.forEach(t => {
+            currentBalance += (currentBalance * (t.pnlPct / 100));
+            returns.push(t.pnlPct / 100);
+        });
+
+        // Sharpe Ratio calculation
+        let sharpeRatio = 0;
+        if (returns.length > 1) {
+            const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+            const stdDev = Math.sqrt(returns.map(x => Math.pow(x - avgReturn, 2)).reduce((a, b) => a + b, 0) / returns.length);
+            if (stdDev !== 0) {
+                sharpeRatio = (avgReturn / stdDev) * Math.sqrt(returns.length);
+            }
+        }
+
         return {
             trades,
             totalTrades: trades.length,
             winRate: trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0,
-            totalPnL: trades.reduce((sum, t) => sum + t.pnlPct, 0)
+            totalPnL: trades.reduce((sum, t) => sum + t.pnlPct, 0),
+            initialBalance,
+            finalBalance: currentBalance,
+            netPnL: currentBalance - initialBalance,
+            sharpeRatio
         };
     } catch (err: any) {
         throw new Error(`Backtest error: ${err.message}`);
