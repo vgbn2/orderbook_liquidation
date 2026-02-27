@@ -257,6 +257,42 @@ export function FloatingBacktestPanel({ onClose }: Props) {
                         </div>
                     </div>
 
+                    {/* Analytics Row: Heatmap & Drawdown */}
+                    <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-panel-dark)' }}>
+                        <div style={{ flex: 1, padding: 'var(--space-4)', borderRight: '1px solid var(--border-color)' }}>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px' }}>MONTHLY RETURNS</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                                {result.monthlyReturns.map((m, i) => {
+                                    const isPos = m.returnPct >= 0;
+                                    const intensity = Math.min(Math.abs(m.returnPct) / 10, 1) * 0.8 + 0.2;
+                                    return (
+                                        <div key={i} title={`${m.year}-${m.month + 1}: ${m.returnPct.toFixed(2)}%`} style={{
+                                            width: '24px', height: '24px',
+                                            background: isPos ? `rgba(0, 255, 200, ${intensity})` : `rgba(255, 59, 92, ${intensity})`,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontSize: '8px', color: '#fff', borderRadius: '2px'
+                                        }}>
+                                            {m.returnPct.toFixed(0)}%
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div style={{ flex: 1, padding: 'var(--space-4)' }}>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px' }}>DRAWDOWN PROFILE</div>
+                            <div style={{ display: 'flex', alignItems: 'flex-end', height: '32px', gap: '1px' }}>
+                                {result.drawdownCurve.filter((_, i) => i % Math.max(1, Math.floor(result.drawdownCurve.length / 100)) === 0).map((d, i) => (
+                                    <div key={i} style={{
+                                        flex: 1, background: 'var(--negative)',
+                                        height: `${Math.min((d.value / Math.max(1, result.maxDrawdown)) * 100, 100)}%`,
+                                        opacity: 0.8
+                                    }} />
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Equity Curve Overlay */}
                     <div style={{ padding: 'var(--space-4)' }}>
                         <EquityChart result={result} height={140} />

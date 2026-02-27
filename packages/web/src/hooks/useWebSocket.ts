@@ -26,6 +26,8 @@ export function useWebSocket() {
         setQuantSnapshot
     } = useMarketStore();
 
+    const handleRef = useRef<any>(null);
+
     const connect = useCallback(() => {
         // Use relative URL — Vite proxy handles routing to backend
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -37,8 +39,8 @@ export function useWebSocket() {
         if (!workerRef.current) {
             workerRef.current = createWorker();
             workerRef.current.onmessage = (e) => {
-                if (e.data.type === 'PARSED_MESSAGE') {
-                    handleParsedMessage(e.data.payload);
+                if (e.data.type === 'PARSED_MESSAGE' && handleRef.current) {
+                    handleRef.current(e.data.payload);
                 }
             };
         }
@@ -121,14 +123,34 @@ export function useWebSocket() {
             default: {
                 if (isReplayMode) return;
 
-                if (msg.topic === `candles.binance.${symbol.toUpperCase()}.${timeframe}`) {
+                if (msg.topic.startsWith('candles.')) {
+                    const parts = msg.topic.split('.');
+                    const tf = parts[3];
                     const candle = msg.data as any;
+
                     if ((msg as any)._cvd !== undefined) {
                         candle.cvd = (msg as any)._cvd;
                     }
-                    if (candle.isUpdate) updateLastCandle(candle);
-                    else addCandle(candle);
-                    setLastPrice(candle.close);
+
+                    if (msg.topic === `candles.binance.${symbol.toUpperCase()}.${timeframe}`) {
+                        if (candle.isUpdate) updateLastCandle(candle);
+                        else addCandle(candle);
+                        setLastPrice(candle.close);
+                    }
+
+                    const { setMultiTfCvd, multiTfCvd } = useMarketStore.getState();
+                    const existing = multiTfCvd[tf] || [];
+                    const newPoint = { time: candle.time, value: candle.cvd ?? 0 };
+
+                    if (candle.isUpdate) {
+                        if (existing.length > 0 && existing[existing.length - 1].time === candle.time) {
+                            setMultiTfCvd(tf, [...existing.slice(0, -1), newPoint]);
+                        } else {
+                            setMultiTfCvd(tf, [...existing, newPoint].slice(-500));
+                        }
+                    } else {
+                        setMultiTfCvd(tf, [...existing, newPoint].slice(-500));
+                    }
                     return;
                 }
 
@@ -191,6 +213,10 @@ export function useWebSocket() {
         setConfluenceZones, addTrade, setReplayMode, setReplayTimestamp, isReplayMode, setQuantSnapshot,
         setSymbol, symbol, timeframe, setMetrics
     ]);
+
+    useEffect(() => {
+        handleRef.current = handleParsedMessage;
+    }, [handleParsedMessage]);
 
     const scheduleReconnect = useCallback(() => {
         if (reconnectTimer.current) clearTimeout(reconnectTimer.current);

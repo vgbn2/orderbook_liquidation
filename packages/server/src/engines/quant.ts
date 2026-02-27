@@ -1,6 +1,7 @@
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 import { logger } from '../logger.js';
 import { clientHub } from '../ws/client-hub.js';
 
@@ -11,6 +12,24 @@ const SCRIPT_PATH = join(__dirname, '../../scripts/fetch_macro.py');
 const INTERVAL = 60 * 60 * 1000; // 1 hour
 const MAX_RETRIES = 3;
 const TIMEOUT = 60_000; // 60s for Python
+
+function findPythonBinary(): string {
+    const candidates = ['python3', 'python', 'python3.11', 'python3.10'];
+    for (const candidate of candidates) {
+        try {
+            const result = execSync(`${candidate} --version`, { stdio: 'pipe' }).toString();
+            if (result.includes('Python 3')) {
+                return candidate;
+            }
+        } catch {
+            continue;
+        }
+    }
+    throw new Error('No Python 3 interpreter found in PATH');
+}
+
+const VENV_PYTHON = join(__dirname, '../../scripts/venv/bin/python3');
+const PYTHON_BIN = existsSync(VENV_PYTHON) ? VENV_PYTHON : findPythonBinary();
 
 export interface QuantSnapshot {
     ts: number;
@@ -111,7 +130,7 @@ class QuantEngine {
             let stdout = '';
             let stderr = '';
 
-            const proc = spawn('python', [SCRIPT_PATH], {
+            const proc = spawn(PYTHON_BIN, [SCRIPT_PATH], {
                 timeout: TIMEOUT,
                 env: { ...process.env },
             });

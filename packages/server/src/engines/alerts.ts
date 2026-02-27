@@ -12,10 +12,11 @@ import {
 export interface Alert {
     id: string;
     time: number;
-    type: 'WALL' | 'LIQ' | 'CONF' | 'FUNDING' | 'TRADE';
+    type: 'WALL' | 'LIQ' | 'CONF' | 'FUNDING' | 'TRADE' | 'AMD';
     severity: 'info' | 'warn' | 'critical';
     message: string;
     price?: number;
+    direction?: 'BULLISH' | 'BEARISH';
 }
 
 class AlertsEngine {

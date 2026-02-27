@@ -38,6 +38,20 @@ async function start(): Promise<void> {
     await redis.connect();
     await redisSub.connect();
 
+    // Fix S6: Use Redis subscriber for distributed alerts/signals
+    redisSub.subscribe('TERMINUS_ALERTS', (err) => {
+        if (err) logger.error('Failed to subscribe to TERMINUS_ALERTS');
+    });
+
+    redisSub.on('message', (channel, message) => {
+        if (channel === 'TERMINUS_ALERTS') {
+            try {
+                const parse = JSON.parse(message);
+                clientHub.broadcast('alerts' as any, parse);
+            } catch { /* ignore */ }
+        }
+    });
+
     logger.info('Connecting to TimescaleDB...');
     // Pool connects lazily on first query, but let's verify
     const dbOk = await dbHealthCheck();
@@ -155,7 +169,17 @@ async function start(): Promise<void> {
     setInterval(() => {
         redis.get(`price:${globalSymbol}`).then((p) => {
             const spot = p ? parseFloat(p) : latestPrice;
+            alertsEngine.setSpot(spot);
             confluenceEngine.setSpot(spot);
+
+            // Feed orderbook (was missing entirely)
+            redis.get('orderbook.aggregated').then((raw) => {
+                if (raw) {
+                    const ob = JSON.parse(raw);
+                    confluenceEngine.setOrderbook(ob);
+                    alertsEngine.checkWalls(ob);
+                }
+            }).catch(() => { });
 
             // Feed options data
             const optData = optionsEngine.getLatest?.();
@@ -175,11 +199,6 @@ async function start(): Promise<void> {
             // Check alerts for confluence and walls
             const confZones = confluenceEngine.getZones?.();
             if (confZones) alertsEngine.checkConfluence(confZones);
-
-            // Fetch current orderbook for wall checks
-            redis.get('orderbook.aggregated').then(raw => {
-                if (raw) alertsEngine.checkWalls(JSON.parse(raw));
-            }).catch(() => { });
 
         }).catch(() => { });
     }, 4_000);

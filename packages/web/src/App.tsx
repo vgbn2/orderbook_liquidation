@@ -9,6 +9,8 @@ import { VWAFPanel } from './components/VWAFPanel';
 import { ConfluencePanel } from './components/ConfluencePanel';
 import { ReplayPanel } from './components/ReplayPanel';
 import { QuantPanel } from './components/QuantPanel';
+import { Orderbook } from './components/Orderbook';
+import { AlertManager } from './components/AlertManager';
 import { Toolbar } from './components/Toolbar';
 import { IndicatorKey, DrawingTool } from './components/Chart';
 import { ToastContainer } from './components/Toast';
@@ -21,6 +23,7 @@ export function App() {
     const timezone = 7; // UTC+7 default
     const [sidebarTab, setSidebarTab] = useState<'macro' | 'options'>('macro');
     const [showBacktestPanel, setShowBacktestPanel] = useState(false);
+    const [showAlertPanel, setShowAlertPanel] = useState(false);
 
     // Chart Toolbar states
     const [activeTool, setActiveTool] = useState<DrawingTool>('none');
@@ -149,6 +152,7 @@ export function App() {
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                         {sidebarTab === 'macro' ? (
                             <>
+                                <Orderbook />
                                 <QuantPanel />
                                 <LiquidationPanel />
                                 <VWAFPanel />
@@ -163,6 +167,10 @@ export function App() {
 
             {showBacktestPanel && (
                 <FloatingBacktestPanel onClose={() => setShowBacktestPanel(false)} />
+            )}
+
+            {showAlertPanel && (
+                <AlertManager onClose={() => setShowAlertPanel(false)} />
             )}
 
             <ToastContainer />

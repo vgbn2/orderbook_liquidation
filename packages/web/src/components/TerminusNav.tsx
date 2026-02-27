@@ -2,27 +2,39 @@ import { useState, useRef, useEffect } from "react";
 import { useMarketStore } from "../stores/marketStore";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { SettingsPopover } from "./SettingsPopover";
+import { showToast } from "./Toast";
 
 
 // ─── DATA ─────────────────────────────────────────────────────
-const MARKETS = [
-    { symbol: "BTCUSDT", price: "67,728.5", change: "-0.51%", neg: true },
-    { symbol: "ETHUSDT", price: "3,482.1", change: "+1.23%", neg: false },
-    { symbol: "SOLUSDT", price: "182.44", change: "+2.87%", neg: false },
-    { symbol: "XAUUSDT", price: "5,190.77", change: "-0.05%", neg: true },
-    { symbol: "BNBUSDT", price: "612.30", change: "+0.44%", neg: false },
-    { symbol: "POWERUSDT", price: "1.8810", change: "+80.87%", neg: false },
-    { symbol: "APTUSDT", price: "0.999", change: "+4.50%", neg: false },
-    { symbol: "XAGUSDT", price: "90.16", change: "+0.86%", neg: false },
-    { symbol: "DOGEUSDT", price: "0.15", change: "-1.2%", neg: true },
-    { symbol: "XRPUSDT", price: "0.58", change: "+0.1%", neg: false },
+let defaultMarkets = [
+    { symbol: "BTCUSDT", price: "67,728.5", change: "-0.51%", neg: true, volume: 1000 },
+    { symbol: "ETHUSDT", price: "3,482.1", change: "+1.23%", neg: false, volume: 900 },
+    { symbol: "SOLUSDT", price: "182.44", change: "+2.87%", neg: false, volume: 800 },
+    { symbol: "XAUUSDT", price: "5,190.77", change: "-0.05%", neg: true, volume: 700 },
+    { symbol: "BNBUSDT", price: "612.30", change: "+0.44%", neg: false, volume: 600 },
+    { symbol: "POWERUSDT", price: "1.8810", change: "+80.87%", neg: false, volume: 500 },
+    { symbol: "APTUSDT", price: "0.999", change: "+4.50%", neg: false, volume: 400 },
+    { symbol: "XAGUSDT", price: "90.16", change: "+0.86%", neg: false, volume: 300 },
+    { symbol: "DOGEUSDT", price: "0.15", change: "-1.2%", neg: true, volume: 200 },
+    { symbol: "XRPUSDT", price: "0.58", change: "+0.1%", neg: false, volume: 100 },
 ];
 
 const NAV_ITEMS = [
     {
         label: "Markets",
         href: "#",
-        dropdown: null,
+        dropdown: {
+            sections: [
+                {
+                    title: "Asset Classes",
+                    items: [
+                        { icon: "₿", label: "Crypto", desc: "Perpetuals and Spot", badge: null },
+                        { icon: "£", label: "Forex", desc: "Synthetic FX pairs", badge: "Soon" },
+                        { icon: "📈", label: "Equities", desc: "Tokenized stocks", badge: "Soon" }
+                    ]
+                }
+            ]
+        },
     },
     {
         label: "Trade",
@@ -152,7 +164,7 @@ const badge = (text: string) => {
     return <span className={`badge ${cls}`}>{text}</span>;
 };
 // ─── TICKER STRIP ─────────────────────────────────────────────
-function TickerStrip({ onSelect, active }: { onSelect: (s: string) => void, active: string }) {
+function TickerStrip({ markets, onSelect, active }: { markets: any[], onSelect: (s: string) => void, active: string }) {
     const stripRef = useRef<HTMLDivElement>(null);
 
     return (
@@ -183,7 +195,7 @@ function TickerStrip({ onSelect, active }: { onSelect: (s: string) => void, acti
                         width: "max-content", // necessary for scroll animation 
                     }}
                 >
-                    {[...MARKETS, ...MARKETS].map((m, i) => (
+                    {[...markets, ...markets].map((m, i) => (
                         <button
                             key={i}
                             onClick={() => onSelect(m.symbol)}
@@ -248,6 +260,13 @@ function Dropdown({ item }: { item: any }) {
                         <button
                             key={ii}
                             className="dd-item"
+                            onClick={() => {
+                                if (it.label === 'Alert Manager') {
+                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_ALERTS'));
+                                } else {
+                                    showToast(`Navigating to ${it.label}...`, 'info');
+                                }
+                            }}
                             style={{
                                 display: "flex", alignItems: "flex-start", gap: 10,
                                 padding: "8px 16px", width: "100%",
@@ -339,16 +358,22 @@ function NavItem({ item }: { item: any }) {
 }
 
 // ─── MARKET SWITCHER MODAL ─────────────────────────────────────
-function MarketSwitcher({ onSelect, onClose }: { onSelect: (s: string) => void, onClose: () => void }) {
+function MarketSwitcher({ markets, onSelect, onClose }: { markets: any[], onSelect: (s: string) => void, onClose: () => void }) {
     const [query, setQuery] = useState("");
     const [sort, setSort] = useState("volume");
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => { inputRef.current?.focus(); }, []);
 
-    const filtered = MARKETS.filter(m =>
+    let filtered = markets.filter(m =>
         m.symbol.toLowerCase().includes(query.toLowerCase())
     );
+
+    if (sort === "change") {
+        filtered.sort((a, b) => parseFloat(b.change) - parseFloat(a.change));
+    } else {
+        filtered.sort((a, b) => (b.volume || 0) - (a.volume || 0));
+    }
 
     return (
         <div style={{
@@ -460,7 +485,26 @@ export function TerminusNav() {
     const { send } = useWebSocket();
     const [showSwitcher, setShowSwitcher] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [markets, setMarkets] = useState(defaultMarkets);
     const settingsBtnRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        fetch('https://fapi.binance.com/fapi/v1/ticker/24hr')
+            .then(res => res.json())
+            .then(data => {
+                const perps = data.filter((d: any) => d.symbol.endsWith('USDT')).slice(0, 50);
+                const formatted = perps.map((p: any) => ({
+                    symbol: p.symbol,
+                    price: parseFloat(p.lastPrice).toLocaleString('en-US', { minimumFractionDigits: 2 }),
+                    change: `${parseFloat(p.priceChangePercent) > 0 ? '+' : ''}${parseFloat(p.priceChangePercent).toFixed(2)}%`,
+                    neg: parseFloat(p.priceChangePercent) < 0,
+                    volume: parseFloat(p.quoteVolume)
+                }));
+                formatted.sort((a: any, b: any) => b.volume - a.volume);
+                setMarkets(formatted.slice(0, 20));
+            })
+            .catch(console.error);
+    }, []);
 
     const activeMarket = symbol;
 
@@ -483,7 +527,7 @@ export function TerminusNav() {
         return () => window.removeEventListener("keydown", handler);
     }, [send]);
 
-    const activeDataFallback = MARKETS.find(m => m.symbol === activeMarket) || MARKETS[0];
+    const activeDataFallback = markets.find(m => m.symbol === activeMarket) || markets[0];
     const displayPrice = lastPrice > 0 ? lastPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : activeDataFallback.price;
     const isNeg = priceDirection === 'bearish';
 
@@ -544,7 +588,13 @@ export function TerminusNav() {
 
                     {/* Top right icons */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <button className="btn btn-icon" style={{ border: 'none', background: 'transparent' }}>◱</button>
+                        <button
+                            className="btn btn-icon"
+                            style={{ border: 'none', background: 'transparent' }}
+                            onClick={() => showToast('Fullscreen toggled', 'info')}
+                        >
+                            ◱
+                        </button>
                         <button
                             ref={settingsBtnRef}
                             onClick={() => setSettingsOpen(true)}
@@ -553,7 +603,13 @@ export function TerminusNav() {
                         >
                             ⚙
                         </button>
-                        <button className="btn btn-icon" style={{ border: 'none', background: 'transparent' }}>⊞</button>
+                        <button
+                            className="btn btn-icon"
+                            style={{ border: 'none', background: 'transparent' }}
+                            onClick={() => showToast('Widgets panel toggled', 'info')}
+                        >
+                            ⊞
+                        </button>
                     </div>
 
                     <div className="divider" />
@@ -583,11 +639,12 @@ export function TerminusNav() {
             </nav>
 
             {/* ── TICKER STRIP ────────────────────────────────────── */}
-            <TickerStrip onSelect={handleSelectMarket} active={activeMarket} />
+            <TickerStrip markets={markets} onSelect={handleSelectMarket} active={activeMarket} />
 
             {/* ── MARKET SWITCHER MODAL ───────────────────────────── */}
             {showSwitcher && (
                 <MarketSwitcher
+                    markets={markets}
                     onSelect={handleSelectMarket}
                     onClose={() => setShowSwitcher(false)}
                 />
