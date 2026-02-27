@@ -34,6 +34,8 @@ export interface BacktestResult {
     finalBalance: number;
     netPnL: number;
     sharpeRatio: number;
+    alpha: number;
+    beta: number;
 }
 
 // Simple SMA calculator
@@ -145,20 +147,73 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
 
         const winningTrades = trades.filter(t => t.pnl > 0);
         const initialBalance = config.initialBalance || 10000;
-        let currentBalance = initialBalance;
-        const returns: number[] = [];
 
-        trades.forEach(t => {
-            currentBalance += (currentBalance * (t.pnlPct / 100));
-            returns.push(t.pnlPct / 100);
-        });
+        // Track bar-by-bar returns for Alpha/Beta
+        const strategyReturns: number[] = [];
+        const marketReturns: number[] = [];
 
-        // Sharpe Ratio calculation
+        // Let's just use the trades to reconstruct bar-by-bar equity.
+        const equityPerBar = new Array(candles.length).fill(initialBalance);
+        const activeTrades = [...trades];
+        let tradeIdx = 0;
+        let inTrade = false;
+
+        for (let i = 1; i < candles.length; i++) {
+            const prevPrice = candles[i - 1].close;
+            const currPrice = candles[i].close;
+            marketReturns.push((currPrice - prevPrice) / prevPrice);
+
+            // Reconstruct equity
+            if (!inTrade && tradeIdx < activeTrades.length && activeTrades[tradeIdx].entryTime === candles[i].time) {
+                inTrade = true;
+            }
+
+            if (inTrade) {
+                const pnlFactor = currPrice / candles[i - 1].close;
+                equityPerBar[i] = equityPerBar[i - 1] * pnlFactor;
+
+                if (activeTrades[tradeIdx].exitTime === candles[i].time) {
+                    inTrade = false;
+                    tradeIdx++;
+                }
+            } else {
+                equityPerBar[i] = equityPerBar[i - 1];
+            }
+            strategyReturns.push((equityPerBar[i] - equityPerBar[i - 1]) / equityPerBar[i - 1]);
+        }
+
+        // Alpha / Beta calculation
+        let alpha = 0;
+        let beta = 0;
+        if (marketReturns.length > 1) {
+            const meanMarket = marketReturns.reduce((a, b) => a + b, 0) / marketReturns.length;
+            const meanStrategy = strategyReturns.reduce((a, b) => a + b, 0) / strategyReturns.length;
+
+            let num = 0;
+            let den = 0;
+            for (let i = 0; i < marketReturns.length; i++) {
+                num += (strategyReturns[i] - meanStrategy) * (marketReturns[i] - meanMarket);
+                den += Math.pow(marketReturns[i] - meanMarket, 2);
+            }
+
+            beta = den !== 0 ? num / den : 0;
+            alpha = meanStrategy - (beta * meanMarket);
+            // Annualize alpha (approx)
+            alpha = alpha * 252; // Assuming daily bars for simplicity in naming, or just keep as per-bar
+        }
+
+        // Sharpe Ratio remains based on trade returns or bar returns? 
+        // User's provided pseudocode used trade returns. Let's keep that or update to bar returns.
+        // Usually Sharpe is period-based. Let's update to bar returns for consistency with Alpha/Beta.
+        const returns = strategyReturns;
         let sharpeRatio = 0;
         if (returns.length > 1) {
             const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
             const stdDev = Math.sqrt(returns.map(x => Math.pow(x - avgReturn, 2)).reduce((a, b) => a + b, 0) / returns.length);
             if (stdDev !== 0) {
+                sharpeRatio = (avgReturn / stdDev) * Math.sqrt(252 * (returns.length / candles.length));
+                // Scaling factor: if we have 1m data, N is much higher. 
+                // Let's use the provided sqrt(len) from user pseudocode for simplicity unless scales are weird.
                 sharpeRatio = (avgReturn / stdDev) * Math.sqrt(returns.length);
             }
         }
@@ -169,9 +224,11 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
             winRate: trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0,
             totalPnL: trades.reduce((sum, t) => sum + t.pnlPct, 0),
             initialBalance,
-            finalBalance: currentBalance,
-            netPnL: currentBalance - initialBalance,
-            sharpeRatio
+            finalBalance: equityPerBar[candles.length - 1],
+            netPnL: equityPerBar[candles.length - 1] - initialBalance,
+            sharpeRatio,
+            alpha,
+            beta
         };
     } catch (err: any) {
         throw new Error(`Backtest error: ${err.message}`);

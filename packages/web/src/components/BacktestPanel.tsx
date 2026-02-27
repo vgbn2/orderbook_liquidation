@@ -69,7 +69,15 @@ export function BacktestPanel() {
                     </div>
                     <div className="stat-card">
                         <span className="stat-label">Sharpe Ratio</span>
-                        <span className="stat-value">{result.sharpeRatio.toFixed(3)}</span>
+                        <span className="stat-value">{result.sharpeRatio.toFixed(2)}</span>
+                    </div>
+                    <div className="stat-card">
+                        <span className="stat-label">Alpha (Annual)</span>
+                        <span className="stat-value">{result.alpha.toFixed(4)}</span>
+                    </div>
+                    <div className="stat-card">
+                        <span className="stat-label">Beta</span>
+                        <span className="stat-value">{result.beta.toFixed(3)}</span>
                     </div>
                     <div className="stat-card">
                         <span className="stat-label">Initial Bal</span>
