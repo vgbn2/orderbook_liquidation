@@ -1,0 +1,158 @@
+# TERMINUS — WEBSOCKET QUANT ENGINE PSEUDOCODE
+
+---
+
+## CORE STRUCTURES
+
+```
+TopicBroadcaster:
+    topics = Map<string, Set<WebSocket>>
+
+    subscribe(topic, ws)    → topics[topic].add(ws)
+    unsubscribe(topic, ws)  → topics[topic].remove(ws)
+    unsubscribeAll(ws)      → remove ws from all topics
+
+    publish(topic, payload):
+        FOR ws IN topics[topic]:
+            IF ws.isOpen → ws.send({ topic, data: payload })
+            ELSE         → topics[topic].remove(ws)
+
+    publishTo(ws, topic, payload):
+        IF ws.isOpen → ws.send({ topic, data: payload })
+```
+
+---
+
+## QUANT ENGINE
+
+```
+QuantEngine:
+    lastSnapshot = null
+    isRunning    = false
+    INTERVAL     = 1hr
+    MAX_RETRIES  = 3
+
+    START():
+        runCycle()
+        setInterval(runCycle, INTERVAL)
+
+    runCycle(attempt = 1):
+        IF isRunning → RETURN (skip, previous still running)
+        isRunning = true
+
+        TRY:
+            raw        = fetchMacroData()
+            macroAdj   = calcMacroDrift(raw)
+            projection = runProjection(raw, macroAdj)
+            grid       = calcSigmaGrid(projection)
+            quantiles  = calcQuantiles(projection)
+
+            lastSnapshot = buildSnapshot(projection, grid, quantiles)
+            broadcaster.publish('quant.analytics', lastSnapshot)
+
+        CATCH err:
+            IF attempt < MAX_RETRIES:
+                wait 5s → runCycle(attempt + 1)
+            ELSE:
+                broadcaster.publish('quant.error', { message: err, retryIn: INTERVAL })
+                // Keep lastSnapshot stale — don't clear it
+
+        FINALLY:
+            isRunning = false
+```
+
+---
+
+## DATA FETCH
+
+```
+fetchMacroData():
+    TRY:
+        spawn python fetch_macro.py
+            → stdout = JSON { target[], DXY[], TNX[], GSPC[], dates[] }
+        IF timeout > 30s → kill process → THROW timeout error
+        RETURN parsed JSON
+
+    CATCH → THROW with message
+```
+
+---
+
+## WEBSOCKET SERVER
+
+```
+onConnection(ws):
+    snapshot = engine.getLastSnapshot()
+    IF snapshot EXISTS → broadcaster.publishTo(ws, 'quant.analytics', snapshot)
+
+    ws.onMessage  → handleMessage(ws, msg)
+    ws.onClose    → broadcaster.unsubscribeAll(ws)
+    ws.onError    → log error
+
+handleMessage(ws, raw):
+    TRY:
+        msg = JSON.parse(raw)
+    CATCH:
+        ws.send({ topic: 'error', code: 'INVALID_JSON' })
+        RETURN
+
+    IF msg.action == 'subscribe':
+        broadcaster.subscribe(msg.topic, ws)
+        ws.send({ topic: 'ack', action: 'subscribe', topic: msg.topic })
+
+    IF msg.action == 'unsubscribe':
+        broadcaster.unsubscribe(msg.topic, ws)
+        ws.send({ topic: 'ack', action: 'unsubscribe', topic: msg.topic })
+
+    ELSE:
+        ws.send({ topic: 'error', code: 'UNKNOWN_ACTION' })
+```
+
+---
+
+## CLIENT RECONNECT
+
+```
+CLIENT:
+    BACKOFF    = 1s
+    MAX_BACKOFF = 30s
+    TOPICS     = ['quant.analytics']
+
+    connect():
+        ws = new WebSocket(URL)
+
+        ws.onOpen:
+            BACKOFF = 1s  // reset
+            FOR topic IN TOPICS → ws.send({ action: 'subscribe', topic })
+
+        ws.onMessage:
+            { topic, data } = JSON.parse(msg)
+            dispatch(topic, data)
+
+        ws.onClose:
+            wait BACKOFF → connect()
+            BACKOFF = min(BACKOFF * 2, MAX_BACKOFF)
+
+        ws.onError:
+            ws.close()  // triggers onClose → reconnect
+
+    every 30s:
+        IF ws.isOpen → ws.send({ action: 'ping' })
+```
+
+---
+
+## MESSAGE SCHEMA
+
+```
+// Client → Server
+{ action: 'subscribe'   | 'unsubscribe', topic: string }
+
+// Server → Client
+{ topic: 'ack',             data: { action, topic } }
+{ topic: 'quant.analytics', data: { ts, meta, kalman[], projections,
+                                    cones[], sigmaGrid[], quantiles,
+                                    macroBreakdown[] } }
+{ topic: 'quant.error',     data: { ts, message, retryIn } }
+{ topic: 'error',           data: { code, message } }
+```
