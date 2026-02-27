@@ -1,6 +1,7 @@
-import { useWebSocket } from './hooks/useWebSocket';
 import { useMarketStore } from './stores/marketStore';
 import { Chart } from './components/Chart';
+import { TerminusNav } from './components/TerminusNav';
+import { FloatingBacktestPanel } from './components/FloatingBacktestPanel';
 
 import { OptionsPanel } from './components/OptionsPanel';
 import { LiquidationPanel } from './components/LiquidationPanel';
@@ -8,29 +9,33 @@ import { VWAFPanel } from './components/VWAFPanel';
 import { ConfluencePanel } from './components/ConfluencePanel';
 import { ReplayPanel } from './components/ReplayPanel';
 import { QuantPanel } from './components/QuantPanel';
-import { BacktestPanel } from './components/BacktestPanel';
+import { Toolbar } from './components/Toolbar';
+import { IndicatorKey, DrawingTool } from './components/Chart';
+import { ToastContainer } from './components/Toast';
 import { useEffect, useState, useCallback } from 'react';
 
-const TIMEZONES = [
-    { label: 'UTC+7', offset: 7 },
-    { label: 'UTC+0', offset: 0 },
-    { label: 'UTC+1', offset: 1 },
-    { label: 'UTC+8', offset: 8 },
-    { label: 'UTC+9', offset: 9 },
-    { label: 'UTC-5', offset: -5 },
-    { label: 'UTC-8', offset: -8 },
-];
-
-const TIMEFRAMES = ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'] as const;
-
 export function App() {
-    const { send } = useWebSocket();
-    const { connected, lastPrice, priceDirection, setCandles, symbol } = useMarketStore();
+    const { connected, setCandles, symbol, timeframe } = useMarketStore();
     const [loading, setLoading] = useState(true);
     const candles = useMarketStore((s) => s.candles);
-    const [timeframe, setTimeframe] = useState('1h');
-    const [timezone, setTimezone] = useState(7); // UTC+7 default
-    const [sidebarTab, setSidebarTab] = useState<'quant' | 'backtest'>('quant');
+    const timezone = 7; // UTC+7 default
+    const [sidebarTab, setSidebarTab] = useState<'macro' | 'options'>('macro');
+    const [showBacktestPanel, setShowBacktestPanel] = useState(false);
+
+    // Chart Toolbar states
+    const [activeTool, setActiveTool] = useState<DrawingTool>('none');
+    const [drawings, setDrawings] = useState<any[]>([]);
+    const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorKey>>(new Set(['volume']));
+    const [selectedDrawing, setSelectedDrawing] = useState<string | null>(null);
+
+    const toggleIndicator = useCallback((key: IndicatorKey) => {
+        setActiveIndicators((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    }, []);
 
     // Fetch historical candles from backend
     const fetchHistorical = useCallback(async (tf: string, sym: string) => {
@@ -62,120 +67,105 @@ export function App() {
         return () => clearTimeout(t);
     }, [candles.length]);
 
-    const formatPrice = (p: number) =>
-        p > 0 ? p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
-
     return (
-        <div className="app-layout">
-            {/* ── Header ────────────────────────────────── */}
-            <header className="header">
-                <div className="header-logo">
-                    <h1>TERMINUS</h1>
-                    <span className="status-badge">
-                        <span className={`status-dot ${connected ? '' : 'disconnected'}`} />
-                        {connected ? 'LIVE' : 'OFFLINE'}
-                    </span>
+        <div className="app-layout" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
+            {/* ── TOP NAV ────────────────────────────────────────── */}
+            <TerminusNav />
+
+            {/* ── WATCHLIST TICKER (Placeholder for now) ─────────── */}
+            <div id="ticker" style={{ height: 'var(--h-ticker)', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
+                {/*  We will implement Watchlist contents here later */}
+            </div>
+
+            {/* ── TOOLBAR ──────────────────── */}
+            <Toolbar
+                activeTool={activeTool}
+                setActiveTool={setActiveTool}
+                drawingsCount={drawings.length}
+                clearDrawings={() => { setDrawings([]); setSelectedDrawing(null); }}
+                activeIndicators={activeIndicators as Set<string>}
+                toggleIndicator={(key) => toggleIndicator(key as IndicatorKey)}
+            />
+
+            {/* ── MAIN ───────────────────────────────────────────── */}
+            <div id="main" style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+
+                {/* ── CHART AREA ─────────────────────────────────── */}
+                <div id="chart-wrap" style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                    <div id="chart-container" style={{ flex: 1, position: 'relative' }}>
+                        {loading && (
+                            <div className="loading-overlay" style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'var(--bg-base)' }}>
+                                <div className="loading-spinner" style={{ width: 32, height: 32, border: '3px solid var(--border-medium)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                <span style={{ fontFamily: 'var(--font)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '16px', letterSpacing: '1px' }}>
+                                    {connected ? 'LOADING MARKET DATA...' : 'CONNECTING TO SERVER...'}
+                                </span>
+                            </div>
+                        )}
+                        <Chart
+                            timezoneOffset={timezone}
+                            activeTool={activeTool}
+                            drawings={drawings}
+                            setDrawings={setDrawings}
+                            activeIndicators={activeIndicators}
+                            onSelectDrawing={setSelectedDrawing}
+                            selectedDrawing={selectedDrawing}
+                            onToolEnd={() => setActiveTool('none')}
+                        />
+                    </div>
                 </div>
 
-                {/* Symbol selector */}
-                <div className="symbol-selector" style={{ display: 'flex', alignItems: 'center' }}>
-                    <select
-                        value={symbol}
-                        onChange={(e) => send({ action: 'switch_symbol', symbol: e.target.value })}
-                        className="tz-select"
-                        style={{ marginRight: '1rem', fontWeight: 'bold' }}
-                    >
-                        {['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'DOGEUSDT', 'XRPUSDT'].map((sym) => (
-                            <option key={sym} value={sym}>{sym}</option>
-                        ))}
-                    </select>
-                </div>
+                {/* ── RIGHT PANEL ────────────────────────────────── */}
+                <aside id="right-panel" style={{ width: 'var(--right-w)', background: 'var(--bg-surface)', borderLeft: '1px solid var(--border-strong)', display: 'flex', flexDirection: 'column', overflowY: 'auto', flexShrink: 0, zIndex: 10 }}>
 
-                {/* Timeframe selector */}
-                <div className="tf-group">
-                    {TIMEFRAMES.map((tf) => (
-                        <button
-                            key={tf}
-                            className={`tf-btn ${tf === timeframe ? 'active' : ''}`}
-                            onClick={() => setTimeframe(tf)}
-                        >
-                            {tf}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Timezone selector */}
-                <div className="tz-selector">
-                    <select
-                        value={timezone}
-                        onChange={(e) => setTimezone(Number(e.target.value))}
-                        className="tz-select"
-                    >
-                        {TIMEZONES.map((tz) => (
-                            <option key={tz.offset} value={tz.offset}>{tz.label}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="header-status">
-                    <span className="status-badge">BTC/USDT</span>
-                    <span className="status-badge perp-badge">PERP</span>
-                    <span className={`price-display ${priceDirection}`}>
-                        ${formatPrice(lastPrice)}
-                    </span>
-                </div>
-            </header>
-
-            {/* ── Main Content ──────────────────────────── */}
-            <main className="main-content">
-                <div className="chart-area">
-                    {loading && (
-                        <div className="loading-overlay">
-                            <div className="loading-spinner" />
-                            <span className="loading-text">
-                                {connected ? 'LOADING MARKET DATA...' : 'CONNECTING TO SERVER...'}
-                            </span>
-                        </div>
-                    )}
-                    <Chart timezoneOffset={timezone} timeframe={timeframe} />
-                </div>
-
-                <aside className="sidebar">
                     {/* Market Replay Controls */}
                     <ReplayPanel />
 
-                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexShrink: 0 }}>
-                        <button
-                            className={`tool-btn ${sidebarTab === 'quant' ? 'active' : ''}`}
-                            onClick={() => setSidebarTab('quant')}
-                            style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem' }}
+                    {/* Tabs area */}
+                    <div style={{ display: 'flex', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
+                        <div
+                            onClick={() => setSidebarTab('macro')}
+                            style={{ flex: 1, padding: '12px', textAlign: 'center', fontSize: '11px', fontWeight: sidebarTab === 'macro' ? 700 : 500, color: sidebarTab === 'macro' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: sidebarTab === 'macro' ? '2px solid var(--accent)' : 'none', cursor: 'pointer' }}
                         >
-                            LIVE DATA
-                        </button>
-                        <button
-                            className={`tool-btn ${sidebarTab === 'backtest' ? 'active' : ''}`}
-                            onClick={() => setSidebarTab('backtest')}
-                            style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem' }}
+                            MACRO · QUANT
+                        </div>
+                        <div
+                            onClick={() => setSidebarTab('options')}
+                            style={{ flex: 1, padding: '12px', textAlign: 'center', fontSize: '11px', fontWeight: sidebarTab === 'options' ? 700 : 500, color: sidebarTab === 'options' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: sidebarTab === 'options' ? '2px solid var(--accent)' : 'none', cursor: 'pointer' }}
                         >
-                            BACKTEST
-                        </button>
+                            OPTIONS · GEX
+                        </div>
+                        {/* Adding a small backtest icon tab just so it's accessible */}
+                        <div
+                            onClick={() => setShowBacktestPanel(true)}
+                            title="Open Backtest Panel"
+                            style={{ padding: '12px 16px', borderLeft: '1px solid var(--border-medium)', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                        >
+                            ▶
+                        </div>
                     </div>
 
-                    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {sidebarTab === 'quant' ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                        {sidebarTab === 'macro' ? (
                             <>
                                 <QuantPanel />
-                                <OptionsPanel />
                                 <LiquidationPanel />
                                 <VWAFPanel />
                                 <ConfluencePanel />
                             </>
                         ) : (
-                            <BacktestPanel />
+                            <OptionsPanel />
                         )}
                     </div>
                 </aside>
-            </main>
+            </div>
+
+            {showBacktestPanel && (
+                <FloatingBacktestPanel onClose={() => setShowBacktestPanel(false)} />
+            )}
+
+            <ToastContainer />
         </div>
     );
 }
