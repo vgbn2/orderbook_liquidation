@@ -14,7 +14,7 @@ export function useWebSocket() {
     const {
         setConnected, addCandle, updateLastCandle, setLastPrice,
         setOrderbook, setOptions, addOptionTrade, setLiquidations,
-        setVwaf, setConfluenceZones, addTrade, addAlert,
+        setVwaf, setConfluenceZones, addTrade,
         setReplayMode, setReplayTimestamp, isReplayMode,
         setQuantSnapshot
     } = useMarketStore();
@@ -134,16 +134,13 @@ export function useWebSocket() {
                     case 'trades':
                         addTrade(msg.data as any);
                         break;
-                    case 'alerts':
-                        addAlert(msg.data as any);
-                        break;
                     case 'quant.analytics':
                         setQuantSnapshot(msg.data as any);
                         break;
                 }
             }
         }
-    }, [addCandle, updateLastCandle, setLastPrice, setOrderbook, setOptions, addOptionTrade, setLiquidations, setVwaf, setConfluenceZones, addTrade, addAlert, setReplayMode, setReplayTimestamp, isReplayMode, setQuantSnapshot]);
+    }, [addCandle, updateLastCandle, setLastPrice, setOrderbook, setOptions, addOptionTrade, setLiquidations, setVwaf, setConfluenceZones, addTrade, setReplayMode, setReplayTimestamp, isReplayMode, setQuantSnapshot]);
 
     const scheduleReconnect = useCallback(() => {
         if (reconnectTimer.current) clearTimeout(reconnectTimer.current);

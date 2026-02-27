@@ -6,7 +6,6 @@ import { OptionsPanel } from './components/OptionsPanel';
 import { LiquidationPanel } from './components/LiquidationPanel';
 import { VWAFPanel } from './components/VWAFPanel';
 import { ConfluencePanel } from './components/ConfluencePanel';
-import { AlertsPanel } from './components/AlertsPanel';
 import { ReplayPanel } from './components/ReplayPanel';
 import { QuantPanel } from './components/QuantPanel';
 import { useEffect, useState, useCallback } from 'react';
@@ -126,9 +125,6 @@ export function App() {
                 </div>
 
                 <aside className="sidebar">
-                    {/* Market Alerts — Highest Priority */}
-                    <AlertsPanel />
-
                     {/* Market Replay Controls */}
                     <ReplayPanel />
 

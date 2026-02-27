@@ -73,15 +73,6 @@ export interface ConfluenceZoneStore {
     reasons: { signal: string; detail?: string; contribution: number }[];
 }
 
-export interface AlertData {
-    id: string;
-    time: number;
-    type: 'WALL' | 'LIQ' | 'CONF' | 'FUNDING' | 'TRADE' | 'AMD';
-    severity: 'info' | 'warn' | 'critical';
-    message: string;
-    price?: number;
-}
-
 interface MarketState {
     // Connection
     connected: boolean;
@@ -123,11 +114,6 @@ interface MarketState {
     // Trades
     trades: TradeData[];
     addTrade: (t: TradeData) => void;
-
-    // Alerts
-    alerts: AlertData[];
-    addAlert: (a: AlertData) => void;
-    clearAlerts: () => void;
 
     // Replay
     isReplayMode: boolean;
@@ -206,14 +192,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             if (s.trades.length > 50) s.trades.length = 50;
             return { trades: s.trades };
         }),
-
-    alerts: [],
-    addAlert: (a) => set((s) => {
-        s.alerts.unshift(a);
-        if (s.alerts.length > 40) s.alerts.length = 40;
-        return { alerts: s.alerts };
-    }),
-    clearAlerts: () => set({ alerts: [] }),
 
     isReplayMode: false,
     setReplayMode: (v) => set({ isReplayMode: v }),
