@@ -22,6 +22,8 @@ import { quantEngine } from './engines/quant.js';
 //  Server Bootstrap
 // ══════════════════════════════════════════════════════════════
 
+let globalSymbol = 'BTCUSDT';
+
 const app = Fastify({
     logger: false, // We use our own pino logger
 });
@@ -55,9 +57,9 @@ async function start(): Promise<void> {
     await binanceAdapter.connect();
 
     // Fetch initial historical candles
-    const historicalCandles = await binanceAdapter.fetchKlines('BTCUSDT', '1m', 500);
+    const historicalCandles = await binanceAdapter.fetchKlines(globalSymbol, '1m', 500);
     if (historicalCandles.length > 0) {
-        await redis.set('candles:BTCUSDT:1m', JSON.stringify(historicalCandles), 'EX', 300);
+        await redis.set(`candles:${globalSymbol}:1m`, JSON.stringify(historicalCandles), 'EX', 300);
         logger.info({ count: historicalCandles.length }, 'Historical candles cached');
     }
 
@@ -68,6 +70,9 @@ async function start(): Promise<void> {
     // Connect trades stream
     logger.info('Connecting to Binance trades...');
     await binanceAdapter.connectTrades();
+
+    // Start polling for funding & OI
+    binanceAdapter.startPolling();
 
     // Start Quant Engine (macro analysis — runs every 1hr)
     quantEngine.start();
@@ -86,7 +91,7 @@ async function start(): Promise<void> {
 
     // Refresh simulated options chain every 20s
     setInterval(() => {
-        const priceStr = redis.get('price:BTCUSDT').catch(() => null);
+        const priceStr = redis.get(`price:${globalSymbol}`).catch(() => null);
         priceStr.then((p) => {
             const spot = p ? parseFloat(p) : latestPrice;
             optionsEngine.setSpot(spot);
@@ -96,7 +101,7 @@ async function start(): Promise<void> {
 
     // Simulate occasional large trades
     setInterval(() => {
-        redis.get('price:BTCUSDT').then((p) => {
+        redis.get(`price:${globalSymbol}`).then((p) => {
             const spot = p ? parseFloat(p) : latestPrice;
             const trade = generateSimulatedTrade(spot);
             clientHub.broadcast('options.large_trade' as any, trade);
@@ -114,7 +119,7 @@ async function start(): Promise<void> {
 
     // Simulate periodic liquidation events
     setInterval(() => {
-        redis.get('price:BTCUSDT').then((p) => {
+        redis.get(`price:${globalSymbol}`).then((p) => {
             const spot = p ? parseFloat(p) : latestPrice;
             liquidationEngine.setSpot(spot);
             if (Math.random() < 0.6) {
@@ -148,7 +153,7 @@ async function start(): Promise<void> {
 
     // Feed confluence engine with data from other engines every 4s
     setInterval(() => {
-        redis.get('price:BTCUSDT').then((p) => {
+        redis.get(`price:${globalSymbol}`).then((p) => {
             const spot = p ? parseFloat(p) : latestPrice;
             confluenceEngine.setSpot(spot);
 
@@ -236,6 +241,25 @@ async function start(): Promise<void> {
                         replayEngine.startSession(clientId, msg.config);
                     } else if (msg.action === 'stop_replay') {
                         replayEngine.stopSession(clientId);
+                    } else if (msg.action === 'switch_symbol') {
+                        const newSymbol = msg.symbol;
+                        globalSymbol = newSymbol.toUpperCase();
+                        logger.info(`Switching global market to ${globalSymbol}`);
+                        binanceAdapter.switchSymbol(globalSymbol).then(() => {
+                            binanceAdapter.fetchKlines(globalSymbol, '1m', 500).then(candles => {
+                                if (candles.length > 0) {
+                                    redis.set(`candles:${globalSymbol}:1m`, JSON.stringify(candles), 'EX', 300);
+                                    const spot = candles[candles.length - 1].close;
+                                    alertsEngine.setSpot(spot);
+                                    optionsEngine.setSpot(spot);
+                                    optionsEngine.loadChain(generateSimulatedChain(spot));
+                                    liquidationEngine.setSpot(spot);
+                                    confluenceEngine.setSpot(spot);
+                                    vwafEngine.clear();
+                                }
+                                clientHub.broadcast('symbol_changed' as any, { symbol: globalSymbol });
+                            });
+                        });
                     }
                 } catch (err) {
                     // Ignore malformed

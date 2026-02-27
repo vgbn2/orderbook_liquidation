@@ -12,8 +12,10 @@ export function useWebSocket() {
     const lastDelayUpdate = useRef(performance.now());
 
     const {
+        symbol, setSymbol,
         setConnected, addCandle, updateLastCandle, setLastPrice,
         setOrderbook, setOptions, addOptionTrade, setLiquidations,
+        addLiquidation, setFundingRates, setOpenInterest,
         setVwaf, setConfluenceZones, addTrade,
         setReplayMode, setReplayTimestamp, isReplayMode,
         setQuantSnapshot
@@ -35,7 +37,7 @@ export function useWebSocket() {
             ws.send(JSON.stringify({
                 action: 'subscribe',
                 topics: [
-                    'candles.binance.BTCUSDT',
+                    `candles.binance.${symbol.toUpperCase()}`,
                     'orderbook.aggregated',
                     'options.analytics',
                     'liquidations',
@@ -122,8 +124,17 @@ export function useWebSocket() {
                     case 'options.large_trade':
                         addOptionTrade(msg.data as any);
                         break;
+                    case 'liquidations':
+                        addLiquidation(msg.data as any);
+                        break;
                     case 'liquidations.heatmap':
                         setLiquidations(msg.data as any);
+                        break;
+                    case 'funding_rate':
+                        setFundingRates(msg.data as any);
+                        break;
+                    case 'open_interest':
+                        setOpenInterest(msg.data as any);
                         break;
                     case 'vwaf':
                         setVwaf(msg.data as any);
@@ -137,10 +148,20 @@ export function useWebSocket() {
                     case 'quant.analytics':
                         setQuantSnapshot(msg.data as any);
                         break;
+                    case 'symbol_changed':
+                        if (msg.data && (msg.data as any).symbol) {
+                            setSymbol((msg.data as any).symbol);
+                        }
+                        break;
                 }
             }
         }
-    }, [addCandle, updateLastCandle, setLastPrice, setOrderbook, setOptions, addOptionTrade, setLiquidations, setVwaf, setConfluenceZones, addTrade, setReplayMode, setReplayTimestamp, isReplayMode, setQuantSnapshot]);
+    }, [
+        addCandle, updateLastCandle, setLastPrice, setOrderbook, setOptions, addOptionTrade,
+        setLiquidations, addLiquidation, setFundingRates, setOpenInterest, setVwaf,
+        setConfluenceZones, addTrade, setReplayMode, setReplayTimestamp, isReplayMode, setQuantSnapshot,
+        setSymbol
+    ]);
 
     const scheduleReconnect = useCallback(() => {
         if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
@@ -184,5 +205,11 @@ export function useWebSocket() {
         }
     }, [setReplayMode, setReplayTimestamp]);
 
-    return { wsRef, startReplay, stopReplay };
+    const send = useCallback((msg: any) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify(msg));
+        }
+    }, []);
+
+    return { wsRef, startReplay, stopReplay, send };
 }

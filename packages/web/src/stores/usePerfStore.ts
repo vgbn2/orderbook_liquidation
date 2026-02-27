@@ -1,13 +1,15 @@
 import { create } from 'zustand';
 
 export interface PerfState {
-    netDelay: number;    // Network RTT in ms
-    procDelay: number;   // Server-to-Client processing age in ms
-    strain: number;      // Weighted score 0-100
-    fps: number;         // Current frames per second
-    msgPressure: number; // Messages per second
+    netDelay: number;
+    procDelay: number;
+    strain: number;
+    fps: number;
+    msgPressure: number;
+    showPerfHud: boolean;
 
-    setMetrics: (metrics: Partial<Omit<PerfState, 'setMetrics'>>) => void;
+    setMetrics: (metrics: Partial<Omit<PerfState, 'setMetrics' | 'toggleHud' | 'showPerfHud'>>) => void;
+    toggleHud: () => void;
 }
 
 export const usePerfStore = create<PerfState>()((set) => ({
@@ -16,6 +18,12 @@ export const usePerfStore = create<PerfState>()((set) => ({
     strain: 0,
     fps: 60,
     msgPressure: 0,
+    showPerfHud: localStorage.getItem('terminus_perf_hud') !== 'false',
 
     setMetrics: (metrics) => set((state) => ({ ...state, ...metrics })),
+    toggleHud: () => set((state) => {
+        const next = !state.showPerfHud;
+        localStorage.setItem('terminus_perf_hud', String(next));
+        return { showPerfHud: next };
+    }),
 }));

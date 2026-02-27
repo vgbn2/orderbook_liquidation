@@ -94,6 +94,10 @@ export class VWAFEngine {
             this.broadcastTimer = null;
         }
     }
+
+    clear(): void {
+        this.snapshots.clear();
+    }
 }
 
 export const vwafEngine = new VWAFEngine();

@@ -1,0 +1,250 @@
+// ============================================================================
+// COMPREHENSIVE SYSTEM ARCHITECTURE & PSEUDOCODE
+// ORDERBOOK LIQUIDATION DASHBOARD
+// ============================================================================
+// This document outlines the entire logic flow, state shape, and rendering 
+// pipelines developed across the recent implementation phases.
+
+// ============================================================================
+// [1] BACKEND: DATA INGESTION & WEBSOCKET SERVER (Node.js / Fastify)
+// ============================================================================
+GLOBAL SERVER CONFIG:
+    Port: 3001
+    Redis DB: 127.0.0.1:6379
+    Base Symbol: "BTCUSDT" (Dynamically Switchable)
+
+CLASS BinanceAdapter:
+    // Handles all downstream communication with Binance API
+    STATE current_symbol = "BTCUSDT"
+    STATE connections = {
+        orderbook: WebSocketConnection,
+        trades: WebSocketConnection,
+        markPrice: WebSocketConnection
+    }
+    STATE polling_intervals = { funding: null, oi: null }
+
+    METHOD connectAll(symbol):
+        // 1. Orderbook Depth (100ms updates)
+        connections.orderbook = connect(wss://fstream.binance.com/ws/{symbol}@depth@100ms)
+        connections.orderbook.onMessage(msg => Engine.Orderbook.process(msg))
+
+        // 2. Aggregated Trades (Real-time)
+        connections.trades = connect(wss://fstream.binance.com/ws/{symbol}@aggTrade)
+        connections.trades.onMessage(msg => {
+            Engine.VWAF.process(msg)
+            IF msg.liquidation: Engine.LiquidationClusters.process(msg)
+        })
+
+        // 3. Mark Price & Funding Rate & Open Interest (Polling)
+        polling_intervals.funding = interval(60s, () => {
+            funding_data = fetch("fapi.binance.com/fapi/v1/fundingRate")
+            broadcast("funding_rate", funding_data)
+        })
+        polling_intervals.oi = interval(60s, () => {
+            oi_data = fetch("fapi.binance.com/fapi/v1/openInterest")
+            broadcast("open_interest", oi_data)
+        })
+
+    METHOD switchSymbol(new_symbol):
+        // Context Tear-down
+        connections.closeAll()
+        polling_intervals.clearAll()
+        Engine.VWAF.clear()
+        Engine.Orderbook.clear()
+        
+        // Context Reconstruction
+        current_symbol = new_symbol
+        fetchHistoricalKlines(new_symbol)
+        connectAll(new_symbol)
+
+CLASS WebSocketsServer:
+    // Handles upstream communication to React Web App
+    ON client_connect (ws):
+        add_to_pool(ws)
+        send(ws, "init_data", { symbol: BinanceAdapter.current_symbol })
+
+    ON client_message (msg):
+        IF msg.type == "switch_symbol":
+            BinanceAdapter.switchSymbol(msg.symbol)
+            broadcast("symbol_changed", msg.symbol)
+
+    METHOD broadcast(topic, data):
+        FOR ws IN pool: send(ws, topic, data)
+
+// ============================================================================
+// [2] BACKEND: QUANT ENGINES
+// ============================================================================
+ENGINE VWAF (Volume Weighted Average Floor/Ceiling):
+    STATE footprints = Map<PriceLevel, TotalVolume>
+    STATE max_footprint_volume = 0
+    STATE historical_snapshots = []
+
+    ON new_trade(trade):
+        footprints[trade.price] += trade.volume
+        max_footprint_volume = MAX(max_footprint_volume, footprints[trade.price])
+    
+    METHOD calculate_zones():
+        zones = footprints.filter(vol > max_footprint_volume * 0.8)
+        RETURN zones
+
+ENGINE LiquidationClusters:
+    // Tracks localized zones of high liquidation pain
+    STATE heatmap = Array<Cluster>
+    CONST TOLERANCE_PCT = 0.001 // 0.1% price difference to group
+    
+    ON liquidation(alert):
+        target_cluster = find_in_heatmap(c => abs(c.price - alert.price) < TOLERANCE_PCT)
+        
+        IF target_cluster:
+            target_cluster.volume += alert.volume
+            target_cluster.count += 1
+            target_cluster.side_bias += (alert.side == BUY ? 1 : -1)
+            target_cluster.intensity = min(1.0, target_cluster.volume / MAX_GLOBAL_LIQ)
+        ELSE:
+            heatmap.push(new Cluster(alert.price, alert.volume))
+
+// ============================================================================
+// [3] FRONTEND: STATE STORE (Zustand)
+// ============================================================================
+STORE MarketStore:
+    STATE symbol = "BTCUSDT"
+    STATE timeframe = "1h"
+    STATE market_data = {
+        candles: [{time, open, high, low, close, volume}],
+        orderbook: { bids: [], asks: [], bid_walls: [], ask_walls: [] },
+        vwaf_zones: [],
+        liquidation_clusters: [],
+        funding_rates: [],
+        open_interest: []
+    }
+    
+    ACTIONS:
+        setSymbol(new_symbol) => state.symbol = new_symbol
+        updateCandle(candle) => ...
+        updateOrderbook(ob) => ...
+
+// ============================================================================
+// [4] FRONTEND: CHART RENDERING & NATIVE CANVAS LOOP
+// ============================================================================
+COMPONENT Chart:
+    // 4A. Timeframe Gating Matrix
+    INDICATOR_RELEVANCE = {
+        'resting_liq':  ['5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'], // Hidden on 1m
+        'session_boxes': ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h'],
+        'macd':         ['15m', '30m', '1h', '4h', '1d', '1w', '1M'],
+        // ... everything else is ALL_TFS
+    }
+
+    // 4B. Standard Series Rendering (Lightweight Charts primitives)
+    ON DATA_UPDATE:
+        CandleSeries.setData(MarketStore.candles)
+        VolumeSeries.setData(MarketStore.volumes)
+        
+        IF active('macd'): MACDSeries.setData(compute_macd(MarketStore.candles))
+        IF active('rsi'):  RSISeries.setData(compute_rsi(MarketStore.candles))
+        IF active('funding_rate'): FundingSeries.setData(MarketStore.funding_rates)
+        IF active('open_interest'): OISeries.setData(MarketStore.open_interest)
+
+    // 4C. Native Canvas Overlays Loop (Runs 60fps)
+    ON CANVAS_DRAW(context):
+        // 1. Session Boxes
+        IF active('session_boxes'):
+            FOR EACH day IN visible_range:
+                // Extract session high/low bounds
+                Asia   = calculate_bounds(00:00 UTC -> 08:00 UTC)
+                London = calculate_bounds(07:00 UTC -> 16:00 UTC)
+                NY     = calculate_bounds(13:00 UTC -> 22:00 UTC)
+
+                // Render Background Boxes
+                context.fillStyle = "rgba(yellow, 0.1)"
+                context.fillRect(Asia.startX, Asia.lowY, Asia.width, Asia.height)
+                
+                // Render High/Low Extension Rays
+                context.strokeStyle = "rgba(yellow, 0.4)"; context.setLineDash([4,4])
+                context.drawLine(Asia.endX, Asia.highY, max_X, Asia.highY)
+                context.drawLine(Asia.endX, Asia.lowY, max_X, Asia.lowY)
+
+        // 2. Resting Liquidity (Orderbook Walls)
+        IF active('resting_liq'):
+            FOR EACH wall IN MarketStore.orderbook.walls:
+                // Skip if wall price was crossed by current candle
+                IF CrossedByCurrentPrice(wall.price): continue
+                
+                color = wall.isBid ? GREEN : RED
+                thickness = normalize(wall.volume) * MAX_THICKNESS
+                pulse = Math.sin(Date.now() / 200) * 0.2 // Throbbing effect for big walls
+
+                context.fillStyle = color(alpha = 0.3 + pulse)
+                context.drawLine(0, wall.price_Y, max_X, wall.price_Y, thickness)
+
+        // 3. Liquidation Clusters
+        IF active('liq_clusters'):
+            FOR EACH cluster IN MarketStore.liquidation_clusters:
+                color = cluster.side_bias > 0 ? RED : GREEN  // Inverse relationship
+                thickness = cluster.intensity * MAX_THINCKNESS
+
+                context.fillStyle = color
+                context.drawLine(0, cluster.price_Y, max_X, cluster.price_Y, thickness)
+
+// ============================================================================
+// [5] FRONTEND: JSON STRATEGY BACKTESTER
+// ============================================================================
+COMPONENT BacktestPanel:
+    STATE strategy_json = `
+    {
+      "name": "SMA Crossover",
+      "buyCondition": "close > SMA20",
+      "sellCondition": "close < SMA20",
+      "takeProfitPct": 3.0,
+      "stopLossPct": 1.5,
+      "indicators": [
+        { "name": "SMA20", "type": "SMA", "period": 20 }
+      ]
+    }
+    `
+
+    ON click_run():
+        engine = new BacktestEngine(MarketStore.candles, parse(strategy_json))
+        result = engine.run()
+        
+        display(result.winRate, result.totalPnL, result.totalTrades)
+        window.dispatchEvent('backtest_results', result.trades)
+
+CLASS BacktestEngine:
+    METHOD run():
+        // Calculate Technicals Dynamically
+        env.close = candles.map(c => c.close)
+        env.SMA20 = compute_sma(env.close, 20)
+
+        // Compile Strategy String to Functions
+        buyFn = new Function('env', 'i', `return ${config.buyCondition}`)
+        sellFn = new Function('env', 'i', `return ${config.sellCondition}`)
+
+        // Loop Historical Data
+        FOR i = 0 to candles.length:
+            IF current_position == NONE AND buyFn(env, i):
+                EnterTrade(LONG, candles[i].close)
+            
+            IF current_position == LONG:
+                hit_tp = calc_profit(candles[i]) >= config.takeProfitPct
+                hit_sl = calc_loss(candles[i]) >= config.stopLossPct
+                
+                IF hit_tp OR hit_sl OR sellFn(env, i):
+                    ExitTrade(candles[i].close)
+
+// ============================================================================
+// [6] FRONTEND: PERFORMANCE ANALYTICS HUD (The "Strain" Meter)
+// ============================================================================
+COMPONENT PerfStats:
+    // Tracks the processing strain on the frontend
+    STATE show_hud = TRUE / FALSE  // Toggled via toolbar
+    
+    ON frame():
+        frame_time = calculate_time_between_frames()
+        fps = 1000 / frame_time
+        
+        UI_Lag_Ratio = max(0, frame_time - 16.6) / 16.6  // Amount over budget
+        Message_Frequency = get_ws_messages_per_second()
+        
+        // 70% weighted to visual lag, 30% to raw data bombardment
+        System_Strain = (UI_Lag_Ratio * 70) + (normalize(Message_Frequency) * 30)

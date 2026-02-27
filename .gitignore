@@ -1,11 +1,19 @@
+# Node dependencies
 node_modules/
 dist/
-.env
-.DS_Store
-*.log
-packages/web/dist/
-packages/server/dist/
 build/
-.agent/
-.gemini/
+.npm/
+
+# Logs and database
+*.log
+*.db
+temp/
+
+# IDE files
 .vscode/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+Desktop.ini

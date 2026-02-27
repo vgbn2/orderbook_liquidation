@@ -11,6 +11,7 @@ import type {
 } from 'lightweight-charts';
 import { useMarketStore } from '../stores/marketStore';
 import { PerfStats } from './PerfStats';
+import { usePerfStore } from '../stores/usePerfStore';
 
 // ═══════════════════════════════════════════════════
 //  Drawing Types
@@ -47,17 +48,38 @@ type Drawing = LineDrawing | HLineDrawing | BoxDrawing;
 //  Indicator Types
 // ═══════════════════════════════════════════════════
 
-type IndicatorKey = 'volume' | 'cvd' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq';
+type IndicatorKey = 'volume' | 'cvd' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq' | 'liq_clusters' | 'funding_rate' | 'open_interest' | 'session_boxes';
+
+// ═══════════════════════════════════════════════════
+//  TF-Relevance Gating
+// ═══════════════════════════════════════════════════
+
+const ALL_TFS = ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'];
+const INDICATOR_RELEVANCE: Record<IndicatorKey, string[]> = {
+    volume: ALL_TFS,
+    cvd: ALL_TFS,
+    delta: ALL_TFS,
+    vwap: ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '1d', '1w', '1M'],
+    liq_overlay: ALL_TFS,
+    rsi: ALL_TFS,
+    macd: ['15m', '30m', '1h', '4h', '1d', '1w', '1M'],
+    resting_liq: ['5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'],
+    liq_clusters: ALL_TFS,
+    funding_rate: ALL_TFS,
+    open_interest: ALL_TFS,
+    session_boxes: ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h'],
+};
 
 interface ChartProps {
     timezoneOffset?: number;
+    timeframe?: string;
 }
 
 // ═══════════════════════════════════════════════════
 //  Chart Component
 // ═══════════════════════════════════════════════════
 
-export function Chart({ timezoneOffset = 7 }: ChartProps) {
+export function Chart({ timezoneOffset = 7, timeframe = '1h' }: ChartProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
@@ -71,10 +93,14 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
     const macdLineRef = useRef<ISeriesApi<'Line'> | null>(null);
     const macdSignalRef = useRef<ISeriesApi<'Line'> | null>(null);
     const macdHistRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+    const fundingSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+    const oiSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
 
     const candles = useMarketStore((s) => s.candles);
     const liquidations = useMarketStore((s) => s.liquidations);
     const orderbook = useMarketStore((s) => s.orderbook);
+    const fundingRates = useMarketStore((s) => s.fundingRates);
+    const openInterest = useMarketStore((s) => s.openInterest);
 
     const [activeTool, setActiveTool] = useState<DrawingTool>('none');
     const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -86,6 +112,8 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
         started: boolean;
         p1?: { time: number; price: number };
     }>({ started: false });
+    const cachedWallsRef = useRef<any[]>([]);
+    const lastWallUpdateRef = useRef<number>(0);
 
     const toggleIndicator = useCallback((key: IndicatorKey) => {
         setActiveIndicators((prev) => {
@@ -218,6 +246,26 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
             scaleMargins: { top: 0.85, bottom: 0 },
         });
 
+        // Funding Rate Histogram
+        const fundingSeries = chart.addHistogramSeries({
+            priceScaleId: 'funding',
+            visible: false,
+        });
+        chart.priceScale('funding').applyOptions({
+            scaleMargins: { top: 0.85, bottom: 0 },
+        });
+
+        // Open Interest Line
+        const oiSeries = chart.addLineSeries({
+            color: '#8b5cf6', // purple
+            lineWidth: 2,
+            priceScaleId: 'oi',
+            visible: false,
+        });
+        chart.priceScale('oi').applyOptions({
+            scaleMargins: { top: 0.75, bottom: 0.1 },
+        });
+
         chartRef.current = chart;
         candleSeriesRef.current = candleSeries;
         volumeSeriesRef.current = volumeSeries;
@@ -229,6 +277,8 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
         macdLineRef.current = macdLine;
         macdSignalRef.current = macdSignal;
         macdHistRef.current = macdHist;
+        fundingSeriesRef.current = fundingSeries;
+        oiSeriesRef.current = oiSeries;
 
         // Resize
         const resizeObserver = new ResizeObserver((entries) => {
@@ -257,6 +307,10 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
             liqSeriesRef.current = null;
             rsiSeriesRef.current = null;
             macdLineRef.current = null;
+            macdSignalRef.current = null;
+            macdHistRef.current = null;
+            fundingSeriesRef.current = null;
+            oiSeriesRef.current = null;
             macdSignalRef.current = null;
             macdHistRef.current = null;
         };
@@ -419,6 +473,78 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
             macdHistRef.current.setData(histData);
         }
     }, [candles, activeIndicators]);
+
+    // ── Backtest Markers ──
+    useEffect(() => {
+        const handleBacktest = (e: any) => {
+            const res = e.detail;
+            if (!candleSeriesRef.current || !res || !res.trades) return;
+
+            const markers: any[] = [];
+            res.trades.forEach((t: any) => {
+                markers.push({
+                    time: t.entryTime,
+                    position: t.type === 'LONG' ? 'belowBar' : 'aboveBar',
+                    color: t.type === 'LONG' ? '#2196F3' : '#FF9800',
+                    shape: t.type === 'LONG' ? 'arrowUp' : 'arrowDown',
+                    text: `Enter ${t.type}`,
+                });
+                markers.push({
+                    time: t.exitTime,
+                    position: t.type === 'LONG' ? 'aboveBar' : 'belowBar',
+                    color: t.pnl >= 0 ? '#4CAF50' : '#F44336',
+                    shape: t.type === 'LONG' ? 'arrowDown' : 'arrowUp',
+                    text: `Exit\n${t.pnlPct.toFixed(2)}%`,
+                });
+            });
+
+            markers.sort((a, b) => a.time - b.time);
+            candleSeriesRef.current.setMarkers(markers);
+        };
+
+        window.addEventListener('backtest_results', handleBacktest);
+        return () => window.removeEventListener('backtest_results', handleBacktest);
+    }, []);
+
+    // ── Data sync for Funding & OI ──
+    useEffect(() => {
+        if (!fundingSeriesRef.current) return;
+        fundingSeriesRef.current.applyOptions({
+            visible: activeIndicators.has('funding_rate'),
+        });
+        if (activeIndicators.has('funding_rate') && fundingRates.length > 0) {
+            const data = fundingRates.map(f => ({
+                time: (Math.floor(f.time / 1000)) as Time,
+                value: f.rate * 100, // percentage for better visibility
+                color: f.rate > 0 ? 'rgba(0, 230, 118, 0.4)' : 'rgba(255, 45, 78, 0.4)'
+            })).sort((a, b) => a.time as number - (b.time as number));
+
+            const unique = [];
+            for (const d of data) {
+                if (unique.length === 0 || unique[unique.length - 1].time !== d.time) unique.push(d);
+            }
+            if (unique.length > 0) fundingSeriesRef.current.setData(unique);
+        }
+    }, [fundingRates, activeIndicators]);
+
+    useEffect(() => {
+        if (!oiSeriesRef.current) return;
+        oiSeriesRef.current.applyOptions({
+            visible: activeIndicators.has('open_interest'),
+        });
+        if (activeIndicators.has('open_interest') && openInterest.length > 0) {
+            const data = openInterest.map(o => ({
+                time: (Math.floor(o.time / 1000)) as Time,
+                value: o.oi
+            })).sort((a, b) => a.time as number - (b.time as number));
+
+            const unique = [];
+            for (const d of data) {
+                if (unique.length === 0 || unique[unique.length - 1].time !== d.time) unique.push(d);
+            }
+            if (unique.length > 0) oiSeriesRef.current.setData(unique);
+        }
+    }, [openInterest, activeIndicators]);
 
     // ── Liquidation overlay on chart (price lines) ──
     useEffect(() => {
@@ -653,16 +779,28 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
 
         // ── Resting Liquidity overlay ──────────────────
         if (activeIndicators.has('resting_liq') && orderbook && candleSeriesRef.current) {
+            const currentCandleTime = candles[candles.length - 1]?.time || 0;
+
+            // Fix: Only recalculate on candle_close (or if empty)
+            if (currentCandleTime !== lastWallUpdateRef.current || cachedWallsRef.current.length === 0) {
+                lastWallUpdateRef.current = currentCandleTime as number;
+                cachedWallsRef.current = [
+                    ...(orderbook.walls?.bid_walls ?? []).map((w: any) => ({ ...w, side: 'bid' as const })),
+                    ...(orderbook.walls?.ask_walls ?? []).map((w: any) => ({ ...w, side: 'ask' as const })),
+                ];
+            }
+
             const MIN_THICKNESS = 1;
             const MAX_THICKNESS = 6;
-            const allWalls = [
-                ...(orderbook.walls?.bid_walls ?? []).map((w: any) => ({ ...w, side: 'bid' as const })),
-                ...(orderbook.walls?.ask_walls ?? []).map((w: any) => ({ ...w, side: 'ask' as const })),
-            ];
-
+            const allWalls = cachedWallsRef.current;
             const maxWallQty = Math.max(...allWalls.map((w: any) => w.qty), 1);
+            const currentPrice = candles[candles.length - 1]?.close || 0;
 
             for (const wall of allWalls) {
+                // Invalidate level if price closed through it
+                if (wall.side === 'bid' && currentPrice < wall.price) continue;
+                if (wall.side === 'ask' && currentPrice > wall.price) continue;
+
                 const y = candleSeriesRef.current.priceToCoordinate(wall.price);
                 if (y == null) continue;
                 const yy = y as number;
@@ -672,9 +810,13 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
                     MIN_THICKNESS
                 ), MAX_THICKNESS);
 
+                // Pulse major walls
+                const isMajor = (wall.qty / maxWallQty) > 0.8;
+                const pulse = isMajor ? Math.sin(Date.now() / 200) * 0.2 : 0;
+
                 const color = wall.side === 'bid'
-                    ? `rgba(0,230,118,${0.3 + (wall.qty / maxWallQty) * 0.5})`
-                    : `rgba(255,45,78,${0.3 + (wall.qty / maxWallQty) * 0.5})`;
+                    ? `rgba(0,230,118,${0.3 + (wall.qty / maxWallQty) * 0.5 + pulse})`
+                    : `rgba(255,45,78,${0.3 + (wall.qty / maxWallQty) * 0.5 + pulse})`;
 
                 ctx.strokeStyle = color;
                 ctx.lineWidth = thickness;
@@ -685,13 +827,120 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // Label
+                // Label updates on tick
+                const distPct = Math.abs((wall.price - currentPrice) / currentPrice * 100);
+
                 ctx.font = '8px JetBrains Mono, monospace';
                 ctx.fillStyle = color;
                 ctx.fillText(
-                    `${wall.qty.toFixed(2)} BTC`,
-                    cw - 70, yy - 2
+                    `${wall.qty.toFixed(2)} BTC (${distPct.toFixed(2)}%)`,
+                    cw - 90, yy - 3
                 );
+            }
+        }
+
+        // ── Liq Clusters overlay ──────────────────
+        if (activeIndicators.has('liq_clusters') && candleSeriesRef.current) {
+            const { liqClusters } = useMarketStore.getState();
+
+            for (const cluster of liqClusters) {
+                const y = candleSeriesRef.current.priceToCoordinate(cluster.price);
+                if (y == null) continue;
+
+                // Width proportional to size
+                const thickness = Math.max(2, Math.min(20, cluster.intensity * 20));
+
+                // RED for long liquidations (they sell), GREEN for short liquidations (they buy)
+                const color = cluster.side === 'long'
+                    ? `rgba(255, 45, 78, ${0.2 + cluster.ageFactor * 0.6})`
+                    : `rgba(0, 230, 118, ${0.2 + cluster.ageFactor * 0.6})`;
+
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(cw, y);
+                ctx.stroke();
+
+                // Label
+                ctx.font = '9px JetBrains Mono, monospace';
+                ctx.fillStyle = color;
+                ctx.fillText(`$${(cluster.totalSize / 1e6).toFixed(1)}M`, cw - 50, y - Math.max(4, thickness / 2 + 2));
+            }
+        }
+
+        // ── Session Boxes overlay ──────────────────
+        if (activeIndicators.has('session_boxes') && candleSeriesRef.current) {
+            const range = ts.getVisibleLogicalRange();
+            if (range && candles.length > 0) {
+                const fromIdx = Math.max(0, Math.floor(range.from));
+                const toIdx = Math.min(candles.length - 1, Math.ceil(range.to));
+
+                const sessions: Record<string, { high: number, low: number, startIdx: number, endIdx: number, color: string, name: string }> = {};
+
+                for (let i = fromIdx; i <= toIdx; i++) {
+                    const c = candles[i];
+                    const d = new Date(c.time * 1000);
+                    const h = d.getUTCHours();
+                    const dayKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+
+                    const updateSession = (name: string, color: string) => {
+                        const key = `${dayKey}_${name}`;
+                        if (!sessions[key]) {
+                            sessions[key] = { high: c.high, low: c.low, startIdx: i, endIdx: i, color, name };
+                        } else {
+                            sessions[key].high = Math.max(sessions[key].high, c.high);
+                            sessions[key].low = Math.min(sessions[key].low, c.low);
+                            sessions[key].endIdx = i;
+                        }
+                    };
+
+                    if (h >= 0 && h < 8) updateSession('ASIA', 'rgba(255, 193, 7, 0.1)'); // yellow
+                    if (h >= 7 && h < 16) updateSession('LONDON', 'rgba(33, 150, 243, 0.1)'); // blue
+                    if (h >= 13 && h < 22) updateSession('NY', 'rgba(244, 67, 54, 0.1)'); // red
+                }
+
+                // Draw boxes
+                for (const s of Object.values(sessions)) {
+                    const x1 = ts.timeToCoordinate(candles[s.startIdx].time as Time);
+                    let x2 = ts.timeToCoordinate(candles[s.endIdx].time as Time);
+
+                    const y1 = candleSeriesRef.current.priceToCoordinate(s.high);
+                    const y2 = candleSeriesRef.current.priceToCoordinate(s.low);
+
+                    if (x1 == null || y1 == null || y2 == null) continue;
+                    if (x2 == null) x2 = (cw as any); // extends to edge if not closed
+
+                    const bx = Math.min((x1 as unknown as number), (x2 as unknown as number));
+                    const bw = Math.abs((x2 as unknown as number) - (x1 as unknown as number)) || (cw / 100);
+                    const by = Math.min((y1 as unknown as number), (y2 as unknown as number));
+                    const bh = Math.abs((y2 as unknown as number) - (y1 as unknown as number));
+
+                    // Box Fill
+                    ctx.fillStyle = s.color;
+                    ctx.fillRect(bx, by, bw, Math.max(bh, 1));
+
+                    // Box Border
+                    const borderColor = s.color.replace('0.1', '0.4');
+                    ctx.strokeStyle = borderColor;
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(bx, by, bw, Math.max(bh, 1));
+
+                    // High/Low Ray Extensions
+                    ctx.beginPath();
+                    ctx.setLineDash([4, 4]);
+                    ctx.moveTo(bx + bw, by);
+                    ctx.lineTo(cw, by); // High ray
+                    ctx.moveTo(bx + bw, by + bh);
+                    ctx.lineTo(cw, by + bh); // Low ray
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Session Label
+                    ctx.font = '10px sans-serif';
+                    ctx.fillStyle = borderColor;
+                    ctx.fillText(s.name, bx + 5, by + 12);
+                }
             }
         }
 
@@ -796,16 +1045,37 @@ export function Chart({ timezoneOffset = 7 }: ChartProps) {
                             ['rsi', 'RSI'],
                             ['macd', 'MACD'],
                             ['resting_liq', 'RESTING'],
+                            ['liq_clusters', 'CLUSTERS'],
+                            ['funding_rate', 'FUNDING'],
+                            ['open_interest', 'OI'],
+                            ['session_boxes', 'SESSIONS'],
                         ] as [IndicatorKey, string][]
-                    ).map(([key, label]) => (
-                        <button
-                            key={key}
-                            className={`tool-btn ${activeIndicators.has(key) ? 'active' : ''}`}
-                            onClick={() => toggleIndicator(key)}
-                        >
-                            {label}
-                        </button>
-                    ))}
+                    ).map(([key, label]) => {
+                        const relevant = INDICATOR_RELEVANCE[key];
+                        const isDimmed = !relevant.includes(timeframe);
+                        return (
+                            <button
+                                key={key}
+                                className={`tool-btn ${activeIndicators.has(key) ? 'active' : ''} ${isDimmed ? 'dimmed' : ''}`}
+                                onClick={() => toggleIndicator(key)}
+                                title={isDimmed ? `⚠ ${label} is less reliable on ${timeframe}` : label}
+                            >
+                                {label}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div className="toolbar-sep" />
+
+                <div className="toolbar-group">
+                    <button
+                        className={`tool-btn ${usePerfStore.getState().showPerfHud ? 'active' : ''}`}
+                        onClick={() => usePerfStore.getState().toggleHud()}
+                        title="Toggle Performance HUD"
+                    >
+                        ⚡
+                    </button>
                 </div>
             </div>
 

@@ -28,6 +28,7 @@ export class BinanceAdapter implements ExchangeAdapter {
     private lastKlineBroadcast = 0;
     private symbol = 'btcusdt';
     private interval = '1m';
+    private pollTimer: ReturnType<typeof setInterval> | null = null;
 
     /**
      * Fetch historical klines from Binance REST API.
@@ -166,6 +167,7 @@ export class BinanceAdapter implements ExchangeAdapter {
         if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
         if (this.depthReconnectTimer) clearTimeout(this.depthReconnectTimer);
         if (this.tradesReconnectTimer) clearTimeout(this.tradesReconnectTimer);
+        if (this.pollTimer) clearInterval(this.pollTimer);
         if (this.ws) {
             this.ws.removeAllListeners();
             this.ws.close(1000, 'Shutdown');
@@ -183,12 +185,69 @@ export class BinanceAdapter implements ExchangeAdapter {
     }
 
     /**
+     * Switch to a new market symbol globally
+     */
+    async switchSymbol(newSymbol: string): Promise<void> {
+        this.symbol = newSymbol.toLowerCase();
+        logger.info({ symbol: this.symbol }, 'BinanceAdapter switching symbol');
+
+        await this.disconnect();
+
+        // Brief delay before reconnecting to ensure connections are fully closed
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        this.health = 'degraded';
+        await this.connect();
+        await this.connectOrderbook();
+        await this.connectTrades();
+        this.startPolling(this.symbol.toUpperCase());
+    }
+
+    /**
+     * Start background polling for Funding Rate and Open Interest
+     */
+    startPolling(symbol = 'BTCUSDT') {
+        if (this.pollTimer) clearInterval(this.pollTimer);
+
+        const poll = async () => {
+            try {
+                // Fetch Funding
+                const fRes = await fetch(`${REST_BASE}/fapi/v1/fundingRate?symbol=${symbol}&limit=100`);
+                if (fRes.ok) {
+                    const fData = await fRes.json() as any[];
+                    if (fData.length > 0) {
+                        clientHub.broadcast('funding_rate' as any, fData.map((f: any) => ({
+                            time: f.fundingTime,
+                            rate: parseFloat(f.fundingRate)
+                        })));
+                    }
+                }
+
+                // Fetch OI
+                const oRes = await fetch(`${REST_BASE}/fapi/v1/openInterest?symbol=${symbol}`);
+                if (oRes.ok) {
+                    const oData = await oRes.json() as any;
+                    clientHub.broadcast('open_interest' as any, {
+                        time: oData.time,
+                        oi: parseFloat(oData.openInterest)
+                    });
+                }
+            } catch (err) {
+                logger.error({ err }, 'Failed to poll Funding/OI');
+            }
+        };
+
+        poll(); // immediate
+        this.pollTimer = setInterval(poll, 60_000); // 60s updates
+    }
+
+    /**
      * Connect to orderbook depth stream + fetch initial snapshot.
      */
     async connectOrderbook(): Promise<void> {
         try {
             // 1. Fetch REST depth snapshot
-            const snapRes = await fetch(`${REST_BASE}/fapi/v1/depth?symbol=BTCUSDT&limit=100`);
+            const snapRes = await fetch(`${REST_BASE}/fapi/v1/depth?symbol=${this.symbol.toUpperCase()}&limit=100`);
             if (!snapRes.ok) throw new Error(`Depth snapshot ${snapRes.status}`);
             const snap = await snapRes.json() as {
                 lastUpdateId: number;

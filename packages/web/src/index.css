@@ -298,6 +298,18 @@ body {
   box-shadow: 0 0 6px rgba(0, 240, 255, 0.15);
 }
 
+.tool-btn.dimmed {
+  opacity: 0.35;
+  border-color: var(--orange);
+  border-style: dashed;
+}
+
+.tool-btn.dimmed:hover {
+  opacity: 0.7;
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
 .tool-clear {
   color: var(--red) !important;
   border-color: rgba(255, 61, 113, 0.3) !important;
