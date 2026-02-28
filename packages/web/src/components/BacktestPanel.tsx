@@ -14,9 +14,11 @@ const DEFAULT_STRATEGY = `{
   "indicators": [
     { "name": "SMA20", "type": "SMA", "period": 20 }
   ]
-}`;
+}`; interface Props {
+    onResult?: (result: BacktestResult | null) => void;
+}
 
-export function BacktestPanel() {
+export function BacktestPanel({ onResult }: Props = {}) {
     const candles = useMarketStore(s => s.candles);
     const [jsonInput, setJsonInput] = useState(DEFAULT_STRATEGY);
     const [result, setResult] = useState<BacktestResult | null>(null);
@@ -27,6 +29,7 @@ export function BacktestPanel() {
             setError(null);
             const res = runBacktest(candles, jsonInput);
             setResult(res);
+            if (onResult) onResult(res);
 
             // Dispatch event to show trades on chart
             window.dispatchEvent(new CustomEvent('backtest_results', { detail: res }));
