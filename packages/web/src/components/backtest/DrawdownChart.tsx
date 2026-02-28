@@ -5,6 +5,7 @@ interface Props {
     data: { time: number; value: number }[];
 }
 
+
 export function DrawdownChart({ data }: Props) {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);

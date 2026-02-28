@@ -248,7 +248,7 @@ export function Toolbar({
                                             const isActive = !isSoon && activeIndicators.has(item.id);
                                             return (
                                                 <div
-                                                    key={item.id}
+                                                    key={`${i}-${item.id}`}
                                                     className={`nav-item dropdown-item ${isSoon ? 'disabled' : ''}`}
                                                     onClick={() => {
                                                         if (!isSoon) {
@@ -277,8 +277,8 @@ export function Toolbar({
                                                             <div style={{
                                                                 marginLeft: "auto",
                                                                 fontSize: 9,
-                                                                background: item.badge === 'SOON' ? "var(--primary-light)" : "rgba(0, 230, 118, 0.2)",
-                                                                color: item.badge === 'SOON' ? "var(--primary)" : "#00e87a",
+                                                                background: item.badge === 'SOON' ? "rgba(139, 92, 246, 0.15)" : "rgba(0, 230, 118, 0.2)",
+                                                                color: item.badge === 'SOON' ? "#a78bfa" : "#00e87a",
                                                                 padding: "2px 6px",
                                                                 borderRadius: 10,
                                                                 fontWeight: 600
