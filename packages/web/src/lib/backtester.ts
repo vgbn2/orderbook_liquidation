@@ -51,6 +51,17 @@ export interface BacktestResult {
     entryFees: number;
     exitFees: number;
     holdingFees: number;
+    alpha: number;
+    beta: number;
+    marketExposure: number;
+    waveContributionPct: number;
+    ev: number;
+    timeUnderDrawdownPct: number;
+    activeRecoveryPct: number;
+    waitingForSetupPct: number;
+    meanBalance: number;
+    stdDevBalance: number;
+    consolidationRange: number;
 }
 
 function calculateSMA(data: number[], period: number) {
@@ -157,6 +168,7 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
         const bahQty = initialBalance / bahEntryPrice;
 
         const equityCurve: { time: number, value: number }[] = [];
+        const inMarketCurve: boolean[] = [];
         const bahCurve: { time: number, value: number }[] = [];
         const trades: TradeResult[] = [];
         let position: { entryPrice: number, entryTime: number, qty: number, stopPrice: number, tpPrice: number } | null = null;
@@ -165,6 +177,8 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
         let exitFees = 0;
         let totalHoldingFees = 0;
         let currentTradeHoldingFees = 0;
+        let barsInMarket = 0;
+        let wavePnL = 0;
 
         const warmupPeriod = Math.max(...(config.indicators || []).map(i => i.period), 1);
 
@@ -184,6 +198,10 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
                     currentTradeHoldingFees += hFee;
                     totalHoldingFees += hFee;
                 }
+
+                barsInMarket++;
+                const prevPrice = candles[i - 1].close;
+                wavePnL += (price - prevPrice) * position.qty;
 
                 const pnlPct = ((price - position.entryPrice) / position.entryPrice) * 100;
                 let exitReason: 'TP' | 'SL' | 'CONDITION' | null = null;
@@ -253,6 +271,7 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
             // — Record strategy equity —
             const currentEquity = balance + (position ? position.qty * price : 0);
             equityCurve.push({ time: c.time, value: currentEquity });
+            inMarketCurve.push(!!position);
         }
 
         // Close open position at end
@@ -301,6 +320,74 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
         }
 
         const bahFinalValue = bahQty * candles[candles.length - 1].close;
+
+        // Market Attribution (Alpha/Beta)
+        const marketReturns: number[] = [];
+        for (let i = 1; i < bahCurve.length; i++) {
+            marketReturns.push((bahCurve[i].value - bahCurve[i - 1].value) / bahCurve[i - 1].value);
+        }
+
+        let beta = 0;
+        let alpha = 0;
+        if (strategyReturns.length > 1 && marketReturns.length === strategyReturns.length) {
+            // Simple Beta calculation: Cov(r_s, r_m) / Var(r_m)
+            const avgM = marketReturns.reduce((a, b) => a + b, 0) / marketReturns.length;
+            const avgS = strategyReturns.reduce((a, b) => a + b, 0) / strategyReturns.length;
+
+            let num = 0;
+            let den = 0;
+            for (let i = 0; i < strategyReturns.length; i++) {
+                num += (strategyReturns[i] - avgS) * (marketReturns[i] - avgM);
+                den += Math.pow(marketReturns[i] - avgM, 2);
+            }
+            beta = den === 0 ? 0 : num / den;
+            // Alpha: r_s - beta * r_m (using total returns for the period)
+            const netReturn = (balance - initialBalance) / initialBalance;
+            const bahReturn = (bahFinalValue - initialBalance) / initialBalance;
+            alpha = netReturn - (beta * bahReturn);
+        }
+
+        const marketExposure = (barsInMarket / (candles.length - warmupPeriod)) * 100;
+        const totalNetPnL = balance - initialBalance;
+        const waveContributionPct = totalNetPnL !== 0 ? (wavePnL / totalNetPnL) * 100 : 0;
+
+        // Expected Value (EV)
+        const losingTrades = trades.filter(t => t.pnl <= 0);
+        const avgWinPct = winningTrades.length ? winningTrades.reduce((s, t) => s + t.pnlPct, 0) / winningTrades.length : 0;
+        const avgLossPct = losingTrades.length ? losingTrades.reduce((s, t) => s + Math.abs(t.pnlPct), 0) / losingTrades.length : 0;
+        const winRateFactor = trades.length > 0 ? winningTrades.length / trades.length : 0;
+        const ev = (winRateFactor * avgWinPct) - ((1 - winRateFactor) * avgLossPct);
+
+        // Consolidation & Standard Deviation
+        const balances = equityCurve.map(pt => pt.value);
+        const meanBalance = balances.length > 0 ? balances.reduce((a, b) => a + b, 0) / balances.length : 0;
+        const stdDevBalance = balances.length > 0
+            ? Math.sqrt(balances.map(x => Math.pow(x - meanBalance, 2)).reduce((a, b) => a + b, 0) / balances.length)
+            : 0;
+        const consolidationRange = 2 * (stdDevBalance * 2);
+
+        // Time Under Drawdown (Nuanced)
+        let totalDDCount = 0;
+        let activeRecoveryCount = 0;
+        let waitingForSetupCount = 0;
+        let rollingPeak = initialBalance;
+
+        for (let i = 0; i < equityCurve.length; i++) {
+            const pt = equityCurve[i];
+            const inMarket = inMarketCurve[i];
+            if (pt.value > rollingPeak) rollingPeak = pt.value;
+
+            if (pt.value < rollingPeak) {
+                totalDDCount++;
+                if (inMarket) activeRecoveryCount++;
+                else waitingForSetupCount++;
+            }
+        }
+
+        const timeUnderDrawdownPct = equityCurve.length > 0 ? (totalDDCount / equityCurve.length) * 100 : 0;
+        const activeRecoveryPct = totalDDCount > 0 ? (activeRecoveryCount / totalDDCount) * 100 : 0;
+        const waitingForSetupPct = totalDDCount > 0 ? (waitingForSetupCount / totalDDCount) * 100 : 0;
+
 
         // Calculate Monthly Returns
         const monthlyReturns: { year: number; month: number; returnPct: number }[] = [];
@@ -380,7 +467,18 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
             totalFees: entryFees + exitFees + totalHoldingFees,
             entryFees,
             exitFees,
-            holdingFees: totalHoldingFees
+            holdingFees: totalHoldingFees,
+            alpha: alpha * 100, // Return as percentage
+            beta,
+            marketExposure,
+            waveContributionPct,
+            ev,
+            timeUnderDrawdownPct,
+            activeRecoveryPct,
+            waitingForSetupPct,
+            meanBalance,
+            stdDevBalance,
+            consolidationRange
         };
     } catch (err: any) {
         throw new Error(`Backtest error: ${err.message}`);
