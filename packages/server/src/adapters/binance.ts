@@ -42,15 +42,39 @@ export class BinanceAdapter implements ExchangeAdapter {
         interval = '1m',
         limit = 500,
     ): Promise<Candle[]> {
-        const url = `${REST_BASE}/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+        let remaining = limit;
+        let endTime: number | undefined = undefined;
+        let allCandles: unknown[][] = [];
+        const MAX_PER_REQUEST = 1500;
 
         try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Binance REST ${res.status}`);
+            while (remaining > 0) {
+                const batchLimit = Math.min(remaining, MAX_PER_REQUEST);
+                let url = `${REST_BASE}/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${batchLimit}`;
+                if (endTime) {
+                    url += `&endTime=${endTime}`;
+                }
 
-            const data = await res.json() as unknown[][];
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`Binance REST ${res.status}`);
 
-            return data.map((k) => ({
+                const data = await res.json() as unknown[][];
+                if (data.length === 0) break;
+
+                // Prepend since we are fetching backwards in time
+                allCandles = data.concat(allCandles);
+                remaining -= data.length;
+
+                // The first candle is the oldest. Use its open time - 1 as the endTime for the next batch.
+                endTime = (data[0][0] as number) - 1;
+
+                if (data.length < batchLimit) {
+                    // Hit the beginning of available history
+                    break;
+                }
+            }
+
+            return allCandles.map((k) => ({
                 time: Math.floor((k[0] as number) / 1000),
                 open: parseFloat(k[1] as string),
                 high: parseFloat(k[2] as string),

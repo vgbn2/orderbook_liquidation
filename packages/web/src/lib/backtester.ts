@@ -9,9 +9,12 @@ export interface BacktestConfig {
     initialBalance?: number;
     indicators: {
         name: string;
-        type: 'SMA' | 'EMA' | 'RSI';
+        type: 'SMA' | 'EMA' | 'RSI' | 'MACD';
         period: number;
     }[];
+    entryFeePct?: number;
+    exitFeePct?: number;
+    holdingFeePct?: number;
 }
 
 export interface TradeResult {
@@ -37,11 +40,17 @@ export interface BacktestResult {
     bahReturnPct: number;
     sharpeRatio: number;
     maxDrawdown: number;
+    maxProfitDrawdown: number;
+    maxProfitDrawdownPct: number;
     equityCurve: { time: number, value: number }[];
     bahCurve: { time: number, value: number }[];
     totalPnL: number;
     monthlyReturns: { year: number; month: number; returnPct: number }[];
     drawdownCurve: { time: number; value: number }[];
+    totalFees: number;
+    entryFees: number;
+    exitFees: number;
+    holdingFees: number;
 }
 
 function calculateSMA(data: number[], period: number) {
@@ -152,6 +161,11 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
         const trades: TradeResult[] = [];
         let position: { entryPrice: number, entryTime: number, qty: number, stopPrice: number, tpPrice: number } | null = null;
 
+        let entryFees = 0;
+        let exitFees = 0;
+        let totalHoldingFees = 0;
+        let currentTradeHoldingFees = 0;
+
         const warmupPeriod = Math.max(...(config.indicators || []).map(i => i.period), 1);
 
         // 3. Simulation Loop
@@ -164,6 +178,13 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
 
             // — Manage open position —
             if (position) {
+                // Apply holding fee for this candle
+                if (config.holdingFeePct) {
+                    const hFee = (position.qty * price) * (config.holdingFeePct / 100);
+                    currentTradeHoldingFees += hFee;
+                    totalHoldingFees += hFee;
+                }
+
                 const pnlPct = ((price - position.entryPrice) / position.entryPrice) * 100;
                 let exitReason: 'TP' | 'SL' | 'CONDITION' | null = null;
 
@@ -178,7 +199,20 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
                     const pnl = (exitPrice - position.entryPrice) * position.qty;
                     balance += (position.entryPrice * position.qty) + pnl;
 
-                    const actualPnlPct = (pnl / (position.entryPrice * position.qty)) * 100;
+                    // Apply exit fee
+                    if (config.exitFeePct) {
+                        const eFee = (position.qty * exitPrice) * (config.exitFeePct / 100);
+                        exitFees += eFee;
+                        balance -= eFee;
+                    }
+
+                    // Apply accumulated holding fees for this specific position
+                    balance -= currentTradeHoldingFees;
+                    const totalFeesForTrade = (config.entryFeePct ? (position.qty * position.entryPrice * (config.entryFeePct / 100)) : 0) +
+                        (config.exitFeePct ? (position.qty * exitPrice * (config.exitFeePct / 100)) : 0) +
+                        currentTradeHoldingFees;
+
+                    const actualPnlPct = ((pnl - totalFeesForTrade) / (position.entryPrice * position.qty)) * 100;
 
                     trades.push({
                         entryTime: position.entryTime,
@@ -204,6 +238,15 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
                     stopPrice: price * (1 - (config.stopLossPct || 0) / 100),
                     tpPrice: price * (1 + (config.takeProfitPct || 0) / 100)
                 };
+                currentTradeHoldingFees = 0;
+
+                // Apply entry fee
+                if (config.entryFeePct) {
+                    const eFee = (qty * price) * (config.entryFeePct / 100);
+                    entryFees += eFee;
+                    balance -= eFee; // This might make balance negative? No, qty was calculated from balance.
+                }
+
                 balance = 0; // Fully invested
             }
 
@@ -217,7 +260,20 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
             const last = candles[candles.length - 1];
             const pnl = (last.close - position.entryPrice) * position.qty;
             balance += (position.entryPrice * position.qty) + pnl;
-            const actualPnlPct = (pnl / (position.entryPrice * position.qty)) * 100;
+
+            // Apply fees for the final exit
+            if (config.exitFeePct) {
+                const eFee = (position.qty * last.close) * (config.exitFeePct / 100);
+                exitFees += eFee;
+                balance -= eFee;
+            }
+            balance -= currentTradeHoldingFees;
+
+            const totalFeesForTrade = (config.entryFeePct ? (position.qty * position.entryPrice * (config.entryFeePct / 100)) : 0) +
+                (config.exitFeePct ? (position.qty * last.close * (config.exitFeePct / 100)) : 0) +
+                currentTradeHoldingFees;
+
+            const actualPnlPct = ((pnl - totalFeesForTrade) / (position.entryPrice * position.qty)) * 100;
             trades.push({
                 entryTime: position.entryTime,
                 exitTime: last.time,
@@ -249,14 +305,14 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
         // Calculate Monthly Returns
         const monthlyReturns: { year: number; month: number; returnPct: number }[] = [];
         if (equityCurve.length > 0) {
-            let currentMonth = new Date(equityCurve[0].time).getMonth();
-            let currentYear = new Date(equityCurve[0].time).getFullYear();
+            let currentMonth = new Date(equityCurve[0].time * 1000).getMonth();
+            let currentYear = new Date(equityCurve[0].time * 1000).getFullYear();
             let startValue = equityCurve[0].value;
             let endValue = startValue;
 
             for (let i = 1; i < equityCurve.length; i++) {
                 const pt = equityCurve[i];
-                const d = new Date(pt.time);
+                const d = new Date(pt.time * 1000);
                 if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear) {
                     monthlyReturns.push({
                         year: currentYear,
@@ -278,6 +334,10 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
 
         let peak = equityCurve.length > 0 ? equityCurve[0].value : 0;
         let maxDrawdown = 0;
+
+        let peakBalance = initialBalance;
+        let maxProfitDrawdown = 0;
+
         const drawdownCurve: { time: number; value: number }[] = [];
 
         for (const pt of equityCurve) {
@@ -285,7 +345,18 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
             const dd = peak > 0 ? ((peak - pt.value) / peak) * 100 : 0;
             drawdownCurve.push({ time: pt.time, value: dd });
             if (dd > maxDrawdown) maxDrawdown = dd;
+
+            if (pt.value > peakBalance) peakBalance = pt.value;
+            // Only consider drawdown from profit (peakBalance > initialBalance)
+            if (peakBalance > initialBalance) {
+                const currentProfitDrawdown = peakBalance - pt.value;
+                if (currentProfitDrawdown > maxProfitDrawdown) {
+                    maxProfitDrawdown = currentProfitDrawdown;
+                }
+            }
         }
+
+        const maxProfitDrawdownPct = peakBalance > initialBalance ? (maxProfitDrawdown / (peakBalance - initialBalance)) * 100 : 0;
 
         return {
             trades,
@@ -299,11 +370,17 @@ export function runBacktest(candles: CandleData[], configRaw: string): BacktestR
             bahReturnPct: ((bahFinalValue - initialBalance) / initialBalance) * 100,
             sharpeRatio,
             maxDrawdown,
+            maxProfitDrawdown,
+            maxProfitDrawdownPct,
             equityCurve,
             bahCurve,
             totalPnL: trades.reduce((sum, t) => sum + t.pnlPct, 0),
             monthlyReturns,
-            drawdownCurve
+            drawdownCurve,
+            totalFees: entryFees + exitFees + totalHoldingFees,
+            entryFees,
+            exitFees,
+            holdingFees: totalHoldingFees
         };
     } catch (err: any) {
         throw new Error(`Backtest error: ${err.message}`);

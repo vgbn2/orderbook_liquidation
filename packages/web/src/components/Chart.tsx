@@ -64,7 +64,7 @@ type Drawing = LineDrawing | HLineDrawing | BoxDrawing | FibDrawing | RayDrawing
 //  Indicator Types
 // ═══════════════════════════════════════════════════
 
-export type IndicatorKey = 'volume' | 'cvd' | 'cvd_htf' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq' | 'liq_clusters' | 'funding_rate' | 'open_interest' | 'session_boxes' | 'log_scale' | 'vol_profile';
+export type IndicatorKey = 'volume' | 'cvd' | 'cvd_htf' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq' | 'liq_clusters' | 'funding_rate' | 'open_interest' | 'session_boxes' | 'log_scale' | 'vol_profile' | 'line_chart';
 
 // ═══════════════════════════════════════════════════
 //  TF-Relevance Gating
@@ -87,6 +87,7 @@ export const INDICATOR_RELEVANCE: Record<IndicatorKey, string[]> = {
     session_boxes: ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h'],
     log_scale: ALL_TFS,
     vol_profile: ALL_TFS,
+    line_chart: ALL_TFS,
 };
 
 interface ChartProps {
@@ -116,6 +117,7 @@ export function Chart({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+    const lineSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
     const cvdSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const cvdHTFSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -142,6 +144,9 @@ export function Chart({
     const initialLoadRef = useRef(false);
     const cachedWallsRef = useRef<any[]>([]);
     const lastWallUpdateRef = useRef<number>(0);
+
+    const userHasScrolledRef = useRef(false);
+    const initialScrollDoneRef = useRef(false);
 
     const rafRef = useRef<number | null>(null);
     const needsRedrawRef = useRef(false);
@@ -205,6 +210,12 @@ export function Chart({
             borderDownColor: '#ff2d4e',
             wickUpColor: '#00b85e',
             wickDownColor: '#cc1c39',
+        });
+
+        const lineSeries = chart.addLineSeries({
+            color: '#2962FF',
+            lineWidth: 2,
+            visible: false,
         });
 
         const volumeSeries = chart.addHistogramSeries({
@@ -317,6 +328,7 @@ export function Chart({
 
         chartRef.current = chart;
         candleSeriesRef.current = candleSeries;
+        lineSeriesRef.current = lineSeries;
         volumeSeriesRef.current = volumeSeries;
         cvdSeriesRef.current = cvdSeries;
         cvdHTFSeriesRef.current = cvdHTFSeries;
@@ -350,6 +362,7 @@ export function Chart({
             chart.remove();
             chartRef.current = null;
             candleSeriesRef.current = null;
+            lineSeriesRef.current = null;
             volumeSeriesRef.current = null;
             cvdSeriesRef.current = null;
             deltaSeriesRef.current = null;
@@ -396,6 +409,10 @@ export function Chart({
 
         const isVisible = (key: IndicatorKey) => activeIndicators.has(key) && INDICATOR_RELEVANCE[key].includes(timeframe);
 
+        const useLineChart = activeIndicators.has('line_chart');
+        candleSeriesRef.current?.applyOptions({ visible: !useLineChart });
+        lineSeriesRef.current?.applyOptions({ visible: useLineChart });
+
         volumeSeriesRef.current?.applyOptions({ visible: isVisible('volume') });
         cvdSeriesRef.current?.applyOptions({ visible: isVisible('cvd') });
         cvdHTFSeriesRef.current?.applyOptions({ visible: isVisible('cvd_htf') });
@@ -427,7 +444,13 @@ export function Chart({
             color: c.close >= c.open ? 'rgba(0,232,122,0.25)' : 'rgba(255,45,78,0.2)',
         }));
 
+        const lineData: LineData<Time>[] = candles.map(c => ({
+            time: c.time as Time,
+            value: c.close
+        }));
+
         candleSeriesRef.current.setData(candleData);
+        lineSeriesRef.current?.setData(lineData);
         volumeSeriesRef.current.setData(volumeData);
 
         // ── Compute CVD (Cumulative Volume Delta) ──
@@ -485,7 +508,13 @@ export function Chart({
 
         // Auto-scroll
         if (chartRef.current) {
-            chartRef.current.timeScale().scrollToPosition(2, false);
+            const isFirstLoad = candles.length > 0 && !initialScrollDoneRef.current;
+            if (isFirstLoad) {
+                chartRef.current.timeScale().scrollToPosition(2, false);
+                initialScrollDoneRef.current = true;
+            } else if (!userHasScrolledRef.current) {
+                chartRef.current.timeScale().scrollToPosition(2, false);
+            }
         }
 
         // ── Compute RSI ──
@@ -1174,6 +1203,14 @@ export function Chart({
 
         const redraw = () => {
             needsRedrawRef.current = true;
+
+            const logicalRange = chart.timeScale().getVisibleLogicalRange();
+            const totalBars = useMarketStore.getState().candles.length;
+            if (logicalRange && logicalRange.to < totalBars - 2) {
+                userHasScrolledRef.current = true;
+            } else {
+                userHasScrolledRef.current = false;
+            }
         };
 
         chart.timeScale().subscribeVisibleTimeRangeChange(redraw);

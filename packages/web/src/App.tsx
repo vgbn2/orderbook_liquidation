@@ -63,7 +63,7 @@ export function App() {
     // Fetch historical candles from backend
     const fetchHistorical = useCallback(async (tf: string, sym: string) => {
         try {
-            const res = await fetch(`/api/ohlcv?symbol=${sym}&interval=${tf}&limit=1500`);
+            const res = await fetch(`/api/ohlcv?symbol=${sym}&interval=${tf}&limit=5000`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             if (data.length > 0) {

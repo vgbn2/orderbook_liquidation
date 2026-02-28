@@ -142,7 +142,7 @@ function OverviewTab({ result }: { result: BacktestResult }) {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
                 <div>
                     <div className="label" style={{ marginBottom: 12 }}>PERFORMANCE</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -154,19 +154,19 @@ function OverviewTab({ result }: { result: BacktestResult }) {
                 </div>
 
                 <div>
-                    <div className="label" style={{ marginBottom: 12 }}>RISK</div>
+                    <div className="label" style={{ marginBottom: 12 }}>RISK / DRAWDOWN</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <StatCard label="SHARPE RATIO" value={result.sharpeRatio.toFixed(2)} />
-                        <StatCard label="MAX DRAWDOWN" value={`-${result.maxDrawdown.toFixed(2)}%`} trend="down" />
+                        <StatCard label="MAX BALANCE DRAWDOWN" value={`-${result.maxDrawdown.toFixed(2)}%`} trend="down" />
+                        <StatCard label="MAX PROFIT DRAWDOWN" value={`-$${result.maxProfitDrawdown.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${result.maxProfitDrawdownPct.toFixed(1)}%)`} trend="down" />
                         <StatCard label="PROFIT FACTOR" value={profitFactor === Infinity ? 'INF' : profitFactor.toFixed(2)} />
-                        <StatCard label="INITIAL BALANCE" value={`$${result.initialBalance.toLocaleString()}`} />
                     </div>
                 </div>
 
                 <div>
                     <div className="label" style={{ marginBottom: 12 }}>TRADE STATS</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <StatCard label="TOTAL TRADES" value={result.totalTrades} />
+                        <StatCard label="TOTAL TRADES" value={result.totalTrades.toString()} />
                         <StatCard label="WIN RATE" value={`${result.winRate.toFixed(1)}%`} />
                         <StatCard label="WIN / LOSS COUNT" value={`${winningTrades.length} / ${losingTrades.length}`} />
                         <StatCard label="AVG WIN / LOSS" value={`${avgWin > 0 ? '+' : ''}${avgWin.toFixed(2)}% / ${avgLoss.toFixed(2)}%`} />
@@ -180,6 +180,16 @@ function OverviewTab({ result }: { result: BacktestResult }) {
                         <StatCard label="STOP LOSS (SL)" value={`${result.totalTrades ? ((slCount / result.totalTrades) * 100).toFixed(0) : 0}%`} />
                         <StatCard label="CONDITION" value={`${result.totalTrades ? ((condCount / result.totalTrades) * 100).toFixed(0) : 0}%`} />
                         <StatCard label="BEST / WORST" value={`${bestTrade > 0 ? '+' : ''}${bestTrade.toFixed(2)}% / ${worstTrade.toFixed(2)}%`} />
+                    </div>
+                </div>
+
+                <div>
+                    <div className="label" style={{ marginBottom: 12 }}>FEES & COSTS</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <StatCard label="TOTAL FEES" value={`-$${result.totalFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} trend="down" />
+                        <StatCard label="ENTRY FEES" value={`$${result.entryFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                        <StatCard label="EXIT FEES" value={`$${result.exitFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                        <StatCard label="HOLDING FEES" value={`$${result.holdingFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
                     </div>
                 </div>
             </div>
@@ -213,11 +223,15 @@ function TradesTab({ result }: { result: BacktestResult }) {
         if (filter === 'LOSS') sorted = sorted.filter(t => t.pnl <= 0);
 
         sorted.sort((a, b) => {
-            let valA: number | string = a[sortCol];
-            let valB: number | string = b[sortCol];
-            if (valA < valB) return sortDir === 'asc' ? -1 : 1;
-            if (valA > valB) return sortDir === 'asc' ? 1 : -1;
-            return 0;
+            let v = 0;
+            if (sortCol === 'entryTime') v = a.entryTime - b.entryTime;
+            else if (sortCol === 'exitTime') v = a.exitTime - b.exitTime;
+            else if (sortCol === 'entryPrice') v = a.entryPrice - b.entryPrice;
+            else if (sortCol === 'exitPrice') v = a.exitPrice - b.exitPrice;
+            else if (sortCol === 'pnl') v = a.pnl - b.pnl;
+            else if (sortCol === 'pnlPct') v = a.pnlPct - b.pnlPct;
+            else if (sortCol === 'reason') v = a.reason.localeCompare(b.reason);
+            return sortDir === 'asc' ? v : -v;
         });
         return sorted;
     }, [result.trades, filter, sortCol, sortDir]);

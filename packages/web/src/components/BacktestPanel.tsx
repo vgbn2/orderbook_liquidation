@@ -13,7 +13,10 @@ const DEFAULT_STRATEGY = `{
   "initialBalance": 10000,
   "indicators": [
     { "name": "SMA20", "type": "SMA", "period": 20 }
-  ]
+  ],
+  "entryFeePct": 0.05,
+  "exitFeePct": 0.05,
+  "holdingFeePct": 0.001
 }`; interface Props {
     onResult?: (result: BacktestResult | null) => void;
 }
@@ -23,6 +26,20 @@ export function BacktestPanel({ onResult }: Props = {}) {
     const [jsonInput, setJsonInput] = useState(DEFAULT_STRATEGY);
     const [result, setResult] = useState<BacktestResult | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const timeframe = useMarketStore(s => s.timeframe);
+    const setTimeframe = useMarketStore(s => s.setTimeframe);
+
+    const TIMEFRAMES = [
+        { value: "1m", label: "1m" },
+        { value: "5m", label: "5m" },
+        { value: "15m", label: "15m" },
+        { value: "1h", label: "1h" },
+        { value: "4h", label: "4h" },
+        { value: "1d", label: "1D" },
+        { value: "1w", label: "1W" },
+        { value: "1M", label: "1M" },
+    ];
 
     const handleRun = () => {
         try {
@@ -41,6 +58,19 @@ export function BacktestPanel({ onResult }: Props = {}) {
     return (
         <PanelSection title="STRATEGY BACKTESTER">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+                    {TIMEFRAMES.map((tf) => (
+                        <button
+                            key={tf.value}
+                            className={`btn btn-sm ${timeframe === tf.value ? "active" : ""}`}
+                            style={{ border: "1px solid var(--border-medium)", padding: '2px 8px', fontSize: '10px' }}
+                            onClick={() => setTimeframe(tf.value)}
+                        >
+                            {tf.label}
+                        </button>
+                    ))}
+                </div>
+
                 <textarea
                     value={jsonInput}
                     onChange={e => setJsonInput(e.target.value)}
@@ -98,6 +128,11 @@ export function BacktestPanel({ onResult }: Props = {}) {
                             <StatCard
                                 label="SHARPE RATIO"
                                 value={result.sharpeRatio.toFixed(2)}
+                            />
+                            <StatCard
+                                label="TOTAL FEES"
+                                value={`-$${result.totalFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                trend="down"
                             />
                         </div>
 
