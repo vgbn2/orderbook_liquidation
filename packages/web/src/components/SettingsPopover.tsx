@@ -76,7 +76,7 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
                         className={`toggle ${tradingConfirmations ? 'active' : ''}`}
                         onClick={() => {
                             setTradingConfirmations(!tradingConfirmations);
-                            showToast(`Trading confirmations ${!tradingConfirmations ? 'enabled' : 'disabled'}`, 'info');
+                            showToast(`Trading confirmations ${!tradingConfirmations ? 'enabled' : 'disabled'}`, 'info', 'system', true);
                         }}
                     >
                         {tradingConfirmations ? 'ON' : 'OFF'}
@@ -91,7 +91,7 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
                         value={theme}
                         onChange={(e) => {
                             setTheme(e.target.value as any);
-                            showToast(`Theme changed to ${e.target.value}`, 'info');
+                            showToast(`Theme changed to ${e.target.value}`, 'info', 'system', true);
                         }}
                     >
                         <option value="Dark">Dark (Default)</option>
@@ -107,7 +107,7 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
                         value={chartLayout}
                         onChange={(e) => {
                             setChartLayout(e.target.value as any);
-                            showToast(`Chart layout changed to ${e.target.value}`, 'info');
+                            showToast(`Chart layout changed to ${e.target.value}`, 'info', 'system', true);
                         }}
                     >
                         <option value="Advanced">Advanced</option>

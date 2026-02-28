@@ -167,9 +167,38 @@ export class OrderbookEngine {
     /**
      * Get aggregated orderbook with walls for a single exchange.
      */
-    getAggregated(exchange: Exchange): AggregatedOrderbook | null {
-        const snapshot = this.getSnapshot(exchange);
-        if (!snapshot) return null;
+    getAggregated(): AggregatedOrderbook | null {
+        const mergedBids = new Map<number, number>();
+        const mergedAsks = new Map<number, number>();
+
+        if (this.books.size === 0) return null;
+
+        for (const [exchange, book] of this.books.entries()) {
+            for (const [price, qty] of book.bids) {
+                mergedBids.set(price, (mergedBids.get(price) || 0) + qty);
+            }
+            for (const [price, qty] of book.asks) {
+                mergedAsks.set(price, (mergedAsks.get(price) || 0) + qty);
+            }
+        }
+
+        const bids: OrderbookLevel[] = [...mergedBids.entries()]
+            .sort((a, b) => b[0] - a[0])
+            .slice(0, DEPTH_LEVELS)
+            .map(([price, qty]) => ({ price, qty }));
+
+        const asks: OrderbookLevel[] = [...mergedAsks.entries()]
+            .sort((a, b) => a[0] - b[0])
+            .slice(0, DEPTH_LEVELS)
+            .map(([price, qty]) => ({ price, qty }));
+
+        const snapshot: OrderbookSnapshot = {
+            time: Date.now(),
+            exchange: 'binance', // default output representation
+            symbol: 'BTCUSDT',
+            bids,
+            asks,
+        };
 
         const walls = this.detectWalls(snapshot);
 
@@ -192,7 +221,7 @@ export class OrderbookEngine {
             this.dirty = false;
 
             // Build aggregated snapshot from primary exchange
-            const aggregated = this.getAggregated('binance');
+            const aggregated = this.getAggregated();
             if (!aggregated) return;
 
             // Cache in Redis
@@ -208,7 +237,7 @@ export class OrderbookEngine {
     }
 
     private async persistSnapshot(): Promise<void> {
-        const aggregated = this.getAggregated('binance');
+        const aggregated = this.getAggregated();
         if (!aggregated) return;
 
         try {

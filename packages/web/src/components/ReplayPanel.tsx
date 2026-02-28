@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useMarketStore } from '../stores/marketStore';
-import { useWebSocket } from '../hooks/useWebSocket';
 
 interface PaperPosition {
     side: 'long' | 'short';
@@ -19,8 +18,21 @@ interface PaperTrade {
 }
 
 export function ReplayPanel() {
-    const { isReplayMode, replayTimestamp, lastPrice } = useMarketStore();
-    const { startReplay, stopReplay } = useWebSocket();
+    const {
+        isReplayMode, setReplayMode, replayTimestamp, setReplayTimestamp,
+        lastPrice, send
+    } = useMarketStore();
+
+    const startReplay = (config: { startTime: number; endTime: number; speed: number }) => {
+        setReplayMode(true);
+        send({ action: 'start_replay', config });
+    };
+
+    const stopReplay = () => {
+        send({ action: 'stop_replay' });
+        setReplayMode(false);
+        setReplayTimestamp(null);
+    };
 
     const [start, setStart] = useState('');
     const [end, setEnd] = useState('');
