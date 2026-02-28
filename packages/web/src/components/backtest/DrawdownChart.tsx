@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, ColorType, Time } from 'lightweight-charts';
 
 interface Props {
     data: { time: number; value: number }[];
@@ -15,7 +15,7 @@ export function DrawdownChart({ data }: Props) {
 
         const chart = createChart(chartContainerRef.current, {
             layout: {
-                background: { color: 'transparent' },
+                background: { type: ColorType.Solid, color: 'transparent' },
                 textColor: '#B2B5BE',
             },
             grid: {
@@ -63,11 +63,10 @@ export function DrawdownChart({ data }: Props) {
 
     useEffect(() => {
         if (seriesRef.current && data.length > 0) {
-            // lightweight-charts needs time to be in seconds or a business day string
-            // Convert ms to seconds
+            // Data time is already in seconds (Unix timestamp)
             const formattedData = data.map(d => ({
-                time: (d.time / 1000) as any,
-                value: -d.value // Drawdown is usually negative
+                time: d.time as Time,
+                value: d.value
             }));
             seriesRef.current.setData(formattedData);
             chartRef.current?.timeScale().fitContent();
