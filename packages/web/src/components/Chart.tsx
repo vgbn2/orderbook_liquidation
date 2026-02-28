@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { createChart, ColorType, CrosshairMode, LineStyle } from 'lightweight-charts';
+import { createChart, ColorType, CrosshairMode, LineStyle, PriceScaleMode } from 'lightweight-charts';
 import type {
     IChartApi,
     ISeriesApi,
@@ -64,7 +64,7 @@ type Drawing = LineDrawing | HLineDrawing | BoxDrawing | FibDrawing | RayDrawing
 //  Indicator Types
 // ═══════════════════════════════════════════════════
 
-export type IndicatorKey = 'volume' | 'cvd' | 'cvd_htf' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq' | 'liq_clusters' | 'funding_rate' | 'open_interest' | 'session_boxes';
+export type IndicatorKey = 'volume' | 'cvd' | 'cvd_htf' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq' | 'liq_clusters' | 'funding_rate' | 'open_interest' | 'session_boxes' | 'log_scale' | 'vol_profile';
 
 // ═══════════════════════════════════════════════════
 //  TF-Relevance Gating
@@ -85,6 +85,8 @@ export const INDICATOR_RELEVANCE: Record<IndicatorKey, string[]> = {
     funding_rate: ALL_TFS,
     open_interest: ALL_TFS,
     session_boxes: ['1m', '2m', '3m', '5m', '15m', '30m', '1h', '4h'],
+    log_scale: ALL_TFS,
+    vol_profile: ALL_TFS,
 };
 
 interface ChartProps {
@@ -336,8 +338,8 @@ export function Chart({
                 if (canvasRef.current) {
                     canvasRef.current.width = width * window.devicePixelRatio;
                     canvasRef.current.height = height * window.devicePixelRatio;
-                    canvasRef.current.style.width = `${width} px`;
-                    canvasRef.current.style.height = `${height} px`;
+                    canvasRef.current.style.width = `${width}px`;
+                    canvasRef.current.style.height = `${height}px`;
                 }
             }
         });
@@ -359,8 +361,6 @@ export function Chart({
             macdHistRef.current = null;
             fundingSeriesRef.current = null;
             oiSeriesRef.current = null;
-            macdSignalRef.current = null;
-            macdHistRef.current = null;
         };
     }, []);
 
@@ -388,6 +388,12 @@ export function Chart({
 
     // ── Toggle indicator visibility ────────────
     useEffect(() => {
+        if (chartRef.current) {
+            chartRef.current.priceScale('right').applyOptions({
+                mode: activeIndicators.has('log_scale') ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+            });
+        }
+
         const isVisible = (key: IndicatorKey) => activeIndicators.has(key) && INDICATOR_RELEVANCE[key].includes(timeframe);
 
         volumeSeriesRef.current?.applyOptions({ visible: isVisible('volume') });
@@ -485,18 +491,28 @@ export function Chart({
         // ── Compute RSI ──
         if (rsiSeriesRef.current && candles.length > 14) {
             const rsiData: LineData<Time>[] = [];
-            for (let i = 1; i < candles.length; i++) {
-                if (i < 14) continue;
-                const window = candles.slice(i - 14, i);
-                let gains = 0, losses = 0;
-                for (let j = 1; j < window.length; j++) {
-                    const diff = window[j].close - window[j - 1].close;
-                    if (diff > 0) gains += diff;
-                    else losses += Math.abs(diff);
-                }
-                const avgGain = gains / 14;
-                const avgLoss = losses / 14;
-                const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+
+            // Seed with simple average of first 14 changes
+            let gains = 0, losses = 0;
+            for (let i = 1; i <= 14; i++) {
+                const diff = candles[i].close - candles[i - 1].close;
+                if (diff > 0) gains += diff;
+                else losses += Math.abs(diff);
+            }
+
+            let avgGain = gains / 14;
+            let avgLoss = losses / 14;
+
+            for (let i = 15; i < candles.length; i++) {
+                const diff = candles[i].close - candles[i - 1].close;
+                const gain = Math.max(diff, 0);
+                const loss = Math.max(-diff, 0);
+
+                // Wilder's smoothing
+                avgGain = (avgGain * 13 + gain) / 14;
+                avgLoss = (avgLoss * 13 + loss) / 14;
+
+                const rs = avgLoss === 0 ? Infinity : avgGain / avgLoss;
                 const rsi = 100 - (100 / (1 + rs));
                 rsiData.push({ time: candles[i].time as Time, value: rsi });
             }
