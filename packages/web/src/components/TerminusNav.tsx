@@ -191,7 +191,7 @@ function TickerStrip({ markets, onSelect, active }: { markets: any[], onSelect: 
                     ref={stripRef}
                     style={{
                         display: "flex", gap: 0,
-                        animation: "ticker-scroll 30s linear infinite",
+                        animation: "ticker-scroll 90s linear infinite",
                         width: "max-content", // necessary for scroll animation 
                     }}
                 >

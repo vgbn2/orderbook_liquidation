@@ -14,10 +14,11 @@ export function OptionsPanel() {
         );
     }
 
-    const fmtPrice = (p: number) =>
-        '$' + p.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    const fmtPrice = (p?: number | null) =>
+        p != null ? '$' + p.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—';
 
-    const fmtGex = (g: number) => {
+    const fmtGex = (g?: number | null) => {
+        if (!g) return '—';
         const sign = g > 0 ? '+' : '';
         if (Math.abs(g) >= 1e6) return `${sign}${(g / 1e6).toFixed(0)}M`;
         if (Math.abs(g) >= 1e3) return `${sign}${(g / 1e3).toFixed(0)}K`;
@@ -25,7 +26,7 @@ export function OptionsPanel() {
     };
 
     // GEX histogram data
-    const gexEntries = Object.entries(options.gex_by_strike)
+    const gexEntries = Object.entries(options.gex_by_strike || {})
         .map(([s, v]) => ({ strike: Number(s), gex: v as number }))
         .sort((a, b) => a.strike - b.strike);
     const maxAbsGex = Math.max(...gexEntries.map((e) => Math.abs(e.gex)), 1);
@@ -42,7 +43,7 @@ export function OptionsPanel() {
                         color: options.regime === 'pinned' ? '#000' : 'var(--positive)',
                         border: `1px solid ${options.regime === 'pinned' ? 'var(--text-secondary)' : 'rgba(0,200,122,0.3)'}`
                     }}>
-                        {options.regime.toUpperCase()}
+                        {options.regime?.toUpperCase() || 'UNKNOWN'}
                     </span>
                 </div>
                 <div className="p-body">
@@ -53,18 +54,18 @@ export function OptionsPanel() {
                         </div>
                         <div className="stat-card">
                             <div className="stat-label">VOL FLIP</div>
-                            <div className="stat-value">{options.gex_flip ? fmtPrice(options.gex_flip) : '—'}</div>
+                            <div className="stat-value">{fmtPrice(options.gex_flip)}</div>
                         </div>
                         <div className="stat-card">
                             <div className="stat-label">NET GEX</div>
-                            <div className={`stat-value ${options.total_gex > 0 ? 'pos' : 'neg'}`}>
+                            <div className={`stat-value ${(options.total_gex || 0) > 0 ? 'pos' : 'neg'}`}>
                                 {fmtGex(options.total_gex)}
                             </div>
                         </div>
                         <div className="stat-card">
                             <div className="stat-label">PCR (OI)</div>
-                            <div className={`stat-value ${options.pcr > 1 ? 'neg' : 'pos'}`}>
-                                {options.pcr.toFixed(2)}
+                            <div className={`stat-value ${(options.pcr || 0) > 1 ? 'neg' : 'pos'}`}>
+                                {options.pcr?.toFixed(2) || '—'}
                             </div>
                         </div>
                     </div>

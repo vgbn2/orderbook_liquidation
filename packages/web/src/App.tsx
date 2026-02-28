@@ -9,7 +9,6 @@ import { VWAFPanel } from './components/VWAFPanel';
 import { ConfluencePanel } from './components/ConfluencePanel';
 import { ReplayPanel } from './components/ReplayPanel';
 import { QuantPanel } from './components/QuantPanel';
-import { Orderbook } from './components/Orderbook';
 import { AlertManager } from './components/AlertManager';
 import { Toolbar } from './components/Toolbar';
 import { IndicatorKey, DrawingTool } from './components/Chart';
@@ -152,7 +151,6 @@ export function App() {
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                         {sidebarTab === 'macro' ? (
                             <>
-                                <Orderbook />
                                 <QuantPanel />
                                 <LiquidationPanel />
                                 <VWAFPanel />
