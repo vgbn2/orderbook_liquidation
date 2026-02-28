@@ -186,10 +186,16 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         });
     },
 
-    symbol: 'BTCUSDT',
-    setSymbol: (symbol) => set({ symbol }),
-    timeframe: '1h',
-    setTimeframe: (timeframe) => set({ timeframe }),
+    symbol: localStorage.getItem('terminus_market_symbol') || 'BTCUSDT',
+    setSymbol: (symbol) => {
+        localStorage.setItem('terminus_market_symbol', symbol);
+        set({ symbol });
+    },
+    timeframe: localStorage.getItem('terminus_market_timeframe') || '1h',
+    setTimeframe: (timeframe) => {
+        localStorage.setItem('terminus_market_timeframe', timeframe);
+        set({ timeframe });
+    },
 
     candles: [],
     setCandles: (candles) => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMarketStore } from '../stores/marketStore';
 import { runBacktest, BacktestResult } from '../lib/backtester';
 import { EquityChart } from './EquityChart';
@@ -23,9 +23,17 @@ const DEFAULT_STRATEGY = `{
 
 export function BacktestPanel({ onResult }: Props = {}) {
     const candles = useMarketStore(s => s.candles);
-    const [jsonInput, setJsonInput] = useState(DEFAULT_STRATEGY);
+    const [jsonInput, setJsonInput] = useState(() => {
+        const saved = localStorage.getItem('terminus_backtest_config');
+        return saved || DEFAULT_STRATEGY;
+    });
     const [result, setResult] = useState<BacktestResult | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    // Save configuration to localStorage
+    useEffect(() => {
+        localStorage.setItem('terminus_backtest_config', jsonInput);
+    }, [jsonInput]);
 
     const timeframe = useMarketStore(s => s.timeframe);
     const setTimeframe = useMarketStore(s => s.setTimeframe);

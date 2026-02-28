@@ -131,7 +131,6 @@ function OverviewTab({ result }: { result: BacktestResult }) {
     const lossPnl = losingTrades.reduce((s, t) => s + Math.abs(t.pnl), 0);
     const profitFactor = lossPnl === 0 ? (winPnl > 0 ? Infinity : 0) : Math.abs(winPnl / lossPnl);
 
-    const alpha = result.netReturnPct - result.bahReturnPct;
 
     const tpCount = result.trades.filter(t => t.reason === 'TP').length;
     const slCount = result.trades.filter(t => t.reason === 'SL').length;
@@ -142,14 +141,14 @@ function OverviewTab({ result }: { result: BacktestResult }) {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 24 }}>
                 <div>
                     <div className="label" style={{ marginBottom: 12 }}>PERFORMANCE</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <StatCard label="NET RETURN" value={`${result.netReturnPct >= 0 ? '+' : ''}${result.netReturnPct.toFixed(2)}%`} trend={result.netReturnPct >= 0 ? 'up' : 'down'} />
                         <StatCard label="NET PNL" value={`$${result.netPnL.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} trend={result.netPnL >= 0 ? 'up' : 'down'} />
                         <StatCard label="B&H RETURN" value={`${result.bahReturnPct >= 0 ? '+' : ''}${result.bahReturnPct.toFixed(2)}%`} />
-                        <StatCard label="ALPHA (VS B&H)" value={`${alpha >= 0 ? '+' : ''}${alpha.toFixed(2)}%`} trend={alpha >= 0 ? 'up' : 'down'} />
+                        <StatCard label="ALPHA (VS B&H)" value={`${result.alpha >= 0 ? '+' : ''}${result.alpha.toFixed(2)}%`} trend={result.alpha >= 0 ? 'up' : 'down'} />
                     </div>
                 </div>
 
@@ -168,7 +167,8 @@ function OverviewTab({ result }: { result: BacktestResult }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <StatCard label="TOTAL TRADES" value={result.totalTrades.toString()} />
                         <StatCard label="WIN RATE" value={`${result.winRate.toFixed(1)}%`} />
-                        <StatCard label="WIN / LOSS COUNT" value={`${winningTrades.length} / ${losingTrades.length}`} />
+                        <StatCard label="EXPECTED VALUE (EV)" value={`${result.ev >= 0 ? '+' : ''}${result.ev.toFixed(2)}%`} trend={result.ev >= 0 ? 'up' : 'down'} />
+                        <StatCard label="AVG RISK-REWARD (R:R)" value={`1 : ${(avgLoss !== 0 ? Math.abs(avgWin / avgLoss) : 0).toFixed(2)}`} />
                         <StatCard label="AVG WIN / LOSS" value={`${avgWin > 0 ? '+' : ''}${avgWin.toFixed(2)}% / ${avgLoss.toFixed(2)}%`} />
                     </div>
                 </div>
@@ -190,6 +190,26 @@ function OverviewTab({ result }: { result: BacktestResult }) {
                         <StatCard label="ENTRY FEES" value={`$${result.entryFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
                         <StatCard label="EXIT FEES" value={`$${result.exitFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
                         <StatCard label="HOLDING FEES" value={`$${result.holdingFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                    </div>
+                </div>
+
+                <div>
+                    <div className="label" style={{ marginBottom: 12 }}>MARKET ATTRIBUTION</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <StatCard label="EXPOSURE" value={`${result.marketExposure.toFixed(1)}%`} />
+                        <StatCard label="BETA (WAVE)" value={result.beta.toFixed(2)} />
+                        <StatCard label="STRATEGY EDGE" value={`${result.alpha >= 0 ? '+' : ''}${result.alpha.toFixed(2)}%`} trend={result.alpha >= 0 ? 'up' : 'down'} />
+                        <StatCard label="WAVE CONTRIBUTION" value={`${result.waveContributionPct.toFixed(1)}%`} trend={result.waveContributionPct > 50 ? 'up' : 'neutral'} />
+                    </div>
+                </div>
+
+                <div>
+                    <div className="label" style={{ marginBottom: 12 }}>STATISTICAL ANALYSIS</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <StatCard label="TUD (TOTAL)" value={`${result.timeUnderDrawdownPct.toFixed(1)}%`} trend="down" />
+                        <StatCard label="ACTIVE RECOVERY" value={`${result.activeRecoveryPct.toFixed(1)}%`} />
+                        <StatCard label="WAITING FOR SETUP" value={`${result.waitingForSetupPct.toFixed(1)}%`} />
+                        <StatCard label="CONSOLIDATION RANGE" value={`$${result.consolidationRange.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} trend="neutral" />
                     </div>
                 </div>
             </div>
