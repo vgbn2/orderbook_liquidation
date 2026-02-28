@@ -107,7 +107,7 @@ function TabButton({ children, active, onClick }: { children: React.ReactNode, a
                 background: 'transparent',
                 border: 'none',
                 borderBottom: `2px solid ${active ? 'var(--accent)' : 'transparent'}`,
-                color: active ? 'var(--text-main)' : 'var(--text-muted)',
+                color: active ? 'var(--text-primary)' : 'var(--text-muted)',
                 fontSize: '11px',
                 fontWeight: active ? 'bold' : 'normal',
                 letterSpacing: '0.05em',
@@ -195,7 +195,7 @@ function OverviewTab({ result }: { result: BacktestResult }) {
 }
 
 // ── TRADES TAB ──
-type SortCol = 'entryTime' | 'pnl' | 'pnlPct' | 'reason';
+type SortCol = 'entryTime' | 'exitTime' | 'entryPrice' | 'exitPrice' | 'pnl' | 'pnlPct' | 'reason';
 type SortDir = 'asc' | 'desc';
 type FilterType = 'ALL' | 'WIN' | 'LOSS';
 
@@ -257,9 +257,9 @@ function TradesTab({ result }: { result: BacktestResult }) {
                         <tr>
                             <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-muted)', fontSize: '11px', fontWeight: 'bold' }}>#</th>
                             <Th col="entryTime">ENTRY DATE</Th>
-                            <Th col="entryTime">EXIT DATE</Th>
-                            <Th col="entryTime">ENTRY $</Th>
-                            <Th col="entryTime">EXIT $</Th>
+                            <Th col="exitTime">EXIT DATE</Th>
+                            <Th col="entryPrice">ENTRY $</Th>
+                            <Th col="exitPrice">EXIT $</Th>
                             <Th col="pnl">PNL $</Th>
                             <Th col="pnlPct">PNL %</Th>
                             <Th col="reason">REASON</Th>
@@ -280,8 +280,8 @@ function TradesTab({ result }: { result: BacktestResult }) {
                             return (
                                 <tr key={originalIndex} style={{ borderBottom: '1px solid var(--border-medium)' }}>
                                     <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{originalIndex}</td>
-                                    <td style={{ padding: '12px 16px' }}>{new Date(t.entryTime).toLocaleString()}</td>
-                                    <td style={{ padding: '12px 16px' }}>{new Date(t.exitTime).toLocaleString()}</td>
+                                    <td style={{ padding: '12px 16px' }}>{new Date(t.entryTime * 1000).toLocaleString()}</td>
+                                    <td style={{ padding: '12px 16px' }}>{new Date(t.exitTime * 1000).toLocaleString()}</td>
                                     <td style={{ padding: '12px 16px' }}>{t.entryPrice.toFixed(2)}</td>
                                     <td style={{ padding: '12px 16px' }}>{t.exitPrice.toFixed(2)}</td>
                                     <td style={{ padding: '12px 16px', color }}>{t.pnl >= 0 ? '+' : ''}{t.pnl.toFixed(2)}</td>
