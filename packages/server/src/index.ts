@@ -9,6 +9,9 @@ import { runMigrations } from './db/migrate.js';
 import { wsManager } from './ws/manager.js';
 import { clientHub } from './ws/client-hub.js';
 import { binanceAdapter } from './adapters/binance.js';
+import { startBybit, stopBybit } from './adapters/bybit.js';
+import { startOkx, stopOkx } from './adapters/okx.js';
+import { startDeribit, stopDeribit } from './adapters/deribit.js';
 import { ohlcvRoutes } from './routes/ohlcv.js';
 import { optionsEngine, generateSimulatedChain, generateSimulatedTrade } from './engines/options.js';
 import { liquidationEngine, generateSimulatedLiquidation, seedLiquidationHistory } from './engines/liquidations.js';
@@ -69,6 +72,15 @@ async function start(): Promise<void> {
     // ── Connect exchange adapters ────────────────
     logger.info('Connecting to Binance...');
     await binanceAdapter.connect();
+
+    logger.info('Connecting to Bybit...');
+    startBybit(globalSymbol);
+
+    logger.info('Connecting to OKX...');
+    startOkx(globalSymbol);
+
+    logger.info('Connecting to Deribit...');
+    startDeribit(globalSymbol);
 
     // Fetch initial historical candles
     const historicalCandles = await binanceAdapter.fetchKlines(globalSymbol, '1m', 500);
@@ -264,6 +276,14 @@ async function start(): Promise<void> {
                         const newSymbol = msg.symbol;
                         globalSymbol = newSymbol.toUpperCase();
                         logger.info(`Switching global market to ${globalSymbol}`);
+
+                        stopBybit(globalSymbol);
+                        stopOkx(globalSymbol);
+                        stopDeribit(globalSymbol);
+                        startBybit(globalSymbol);
+                        startOkx(globalSymbol);
+                        startDeribit(globalSymbol);
+
                         binanceAdapter.switchSymbol(globalSymbol).then(() => {
                             binanceAdapter.fetchKlines(globalSymbol, '1m', 500).then(candles => {
                                 if (candles.length > 0) {
@@ -314,6 +334,9 @@ async function shutdown(signal: string): Promise<void> {
 
     // 3. Disconnect exchange adapters
     await binanceAdapter.disconnect();
+    stopBybit(globalSymbol);
+    stopOkx(globalSymbol);
+    stopDeribit(globalSymbol);
     await wsManager.disconnectAll();
 
     // 3. Close database connections

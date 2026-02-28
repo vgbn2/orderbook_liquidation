@@ -1,5 +1,6 @@
 import { usePerfStore } from "../stores/usePerfStore";
 import { useMarketStore } from "../stores/marketStore";
+import { useSettingsStore } from "../stores/settingsStore";
 
 interface Props {
     activeTool: string;
@@ -39,6 +40,32 @@ export function Toolbar({
     const togglePerfHud = usePerfStore((s) => s.toggleHud);
     const timeframe = useMarketStore((s) => s.timeframe);
     const setTimeframe = useMarketStore((s) => s.setTimeframe);
+
+    const showOrderbook = useSettingsStore(s => s.showOrderbook);
+    const toggleOrderbook = useSettingsStore(s => s.toggleOrderbook);
+    const notificationLevel = useSettingsStore(s => s.notificationLevel);
+    const setNotificationLevel = useSettingsStore(s => s.setNotificationLevel);
+
+    const cycleNotifications = () => {
+        const next = {
+            'all': 'critical_only',
+            'critical_only': 'off',
+            'off': 'all',
+        }[notificationLevel] as 'all' | 'critical_only' | 'off';
+        setNotificationLevel(next);
+    };
+
+    const NOTIF_ICON = { all: '🔔', critical_only: '🔕', off: '🔇' };
+    const NOTIF_TITLE = {
+        all: 'Notifications: ALL — click for critical only',
+        critical_only: 'Notifications: CRITICAL ONLY — click to mute',
+        off: 'Notifications: MUTED — click to enable all',
+    };
+    const NOTIF_ACTIVE_CLASS = {
+        all: 'active',
+        critical_only: 'active-warn',
+        off: '',
+    };
 
     return (
         <div id="toolbar" style={{
@@ -140,6 +167,32 @@ export function Toolbar({
                 >⚡</button>
                 <button className="btn btn-icon" title="Chart Settings">⚙</button>
                 <button className="btn btn-icon" title="Take Snapshot">📷</button>
+            </div>
+
+            <div className="divider"></div>
+
+            {/* VIEW Settings */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span className="label" style={{ marginRight: 6 }}>VIEW</span>
+
+                {/* Orderbook toggle */}
+                <button
+                    className={`btn btn-icon ${showOrderbook ? 'active' : ''}`}
+                    onClick={toggleOrderbook}
+                    title={showOrderbook ? 'Hide Orderbook' : 'Show Orderbook'}
+                    style={{ fontSize: 11, letterSpacing: '0.04em' }}
+                >
+                    OB
+                </button>
+
+                {/* Notification level cycle button */}
+                <button
+                    className={`btn btn-icon ${NOTIF_ACTIVE_CLASS[notificationLevel]}`}
+                    onClick={cycleNotifications}
+                    title={NOTIF_TITLE[notificationLevel]}
+                >
+                    {NOTIF_ICON[notificationLevel]}
+                </button>
             </div>
         </div>
     );

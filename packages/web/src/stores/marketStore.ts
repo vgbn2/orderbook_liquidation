@@ -65,6 +65,14 @@ export interface OpenInterestData {
     oi: number;
 }
 
+export interface Alert {
+    id: string;
+    type: string;
+    message: string;
+    severity: 'info' | 'warn' | 'critical';
+    time: number;
+}
+
 export interface VWAFDataStore {
     vwaf: number;
     vwaf_annualized: number;
@@ -107,16 +115,16 @@ interface MarketState {
 
     // Orderbook
     orderbook: OrderbookData | null;
-    setOrderbook: (ob: OrderbookData) => void;
+    setOrderbook: (ob: OrderbookData | null) => void;
 
     // Options
     options: OptionsAnalyticsData | null;
-    setOptions: (o: OptionsAnalyticsData) => void;
+    setOptions: (o: OptionsAnalyticsData | null) => void;
     optionTrades: OptionTradeData[];
     addOptionTrade: (t: OptionTradeData) => void;
 
     liquidations: LiquidationHeatmapData | null;
-    setLiquidations: (d: LiquidationHeatmapData) => void;
+    setLiquidations: (d: LiquidationHeatmapData | null) => void;
     liqClusters: (LiqCluster & { ageFactor: number })[];
     addLiquidation: (event: LiqEvent) => void;
 
@@ -129,7 +137,7 @@ interface MarketState {
 
     // VWAF
     vwaf: VWAFDataStore | null;
-    setVwaf: (v: VWAFDataStore) => void;
+    setVwaf: (v: VWAFDataStore | null) => void;
 
     // Confluence
     confluenceZones: ConfluenceZoneStore[] | null;
@@ -138,6 +146,12 @@ interface MarketState {
     // Trades
     trades: TradeData[];
     addTrade: (t: TradeData | TradeData[]) => void;
+
+    // Alerts
+    activeAlerts: Alert[];
+    addAlert: (a: Alert) => void;
+    dismissAlert: (id: string) => void;
+    clearAlerts: () => void;
 
     // Replay
     isReplayMode: boolean;
@@ -152,6 +166,10 @@ interface MarketState {
     // Multi-Scale CVD
     multiTfCvd: Record<string, { time: number; value: number }[]>;
     setMultiTfCvd: (tf: string, data: { time: number; value: number }[]) => void;
+
+    // WebSocket singleton
+    send: (msg: any) => void;
+    setSend: (fn: (msg: any) => void) => void;
 }
 
 export const useMarketStore = create<MarketState>((set, get) => ({
@@ -184,6 +202,10 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     },
     addCandle: (candle) =>
         set((s) => {
+            // Deduplicate: if last candle has same time, it's a duplicate push
+            if (s.candles.length > 0 && s.candles[s.candles.length - 1].time === candle.time) {
+                return s;
+            }
             const newCandles = [...s.candles, candle];
             if (newCandles.length > 1500) newCandles.shift();
             return { candles: newCandles, lastPrice: candle.close };
@@ -243,6 +265,15 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             return { trades: [...s.trades] };
         }),
 
+    activeAlerts: [],
+    addAlert: (a) => set(s => ({
+        activeAlerts: [a, ...s.activeAlerts].slice(0, 100)
+    })),
+    dismissAlert: (id) => set(s => ({
+        activeAlerts: s.activeAlerts.filter(a => a.id !== id)
+    })),
+    clearAlerts: () => set({ activeAlerts: [] }),
+
     isReplayMode: false,
     setReplayMode: (v) => set({ isReplayMode: v }),
     replayTimestamp: null,
@@ -262,8 +293,12 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     })(),
     setMultiTfCvd: (tf, data) =>
         set((s) => {
-            const next = { ...s.multiTfCvd, [tf]: data.slice(-500) }; // Keep last 500 points for persistence efficiency
-            localStorage.setItem('terminus_multi_tf_cvd', JSON.stringify(next));
-            return { multiTfCvd: next };
+            const updated = { ...s.multiTfCvd };
+            updated[tf] = data.slice(-500); // Keep last 500 points for persistence efficiency
+            localStorage.setItem('terminus_multi_tf_cvd', JSON.stringify(updated));
+            return { multiTfCvd: updated };
         }),
+
+    send: () => { },
+    setSend: (fn) => set({ send: fn })
 }));

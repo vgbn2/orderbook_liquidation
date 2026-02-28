@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useMarketStore } from "../stores/marketStore";
-import { useWebSocket } from "../hooks/useWebSocket";
+import { useSettingsStore } from "../stores/settingsStore";
 import { SettingsPopover } from "./SettingsPopover";
 import { showToast } from "./Toast";
 
@@ -230,6 +230,7 @@ function TickerStrip({ markets, onSelect, active }: { markets: any[], onSelect: 
 
 // ─── DROPDOWN ─────────────────────────────────────────────────
 function Dropdown({ item }: { item: any }) {
+    const setView = useSettingsStore(s => s.setView);
     if (!item.dropdown) return null;
     const { sections } = item.dropdown;
 
@@ -263,8 +264,14 @@ function Dropdown({ item }: { item: any }) {
                             onClick={() => {
                                 if (it.label === 'Alert Manager') {
                                     window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_ALERTS'));
-                                } else {
-                                    showToast(`Navigating to ${it.label}...`, 'info');
+                                } else if (it.label === 'Clusters') {
+                                    window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'liq_clusters' } }));
+                                } else if (it.label === 'Resting Liq') {
+                                    window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'resting_liq' } }));
+                                } else if (['Backtest', 'Paper Trade', 'Replay', 'Optimize', 'Equity Curve', 'Trade Log', 'Drawdown', 'Heatmap'].includes(it.label)) {
+                                    setView('backtest');
+                                } else if (it.label !== "Settings") {
+                                    showToast(`Navigating to ${it.label}...`, 'info', 'system', true);
                                 }
                             }}
                             style={{
@@ -481,38 +488,107 @@ function MarketSwitcher({ markets, onSelect, onClose }: { markets: any[], onSele
 
 // ─── MAIN NAV ─────────────────────────────────────────────────
 export function TerminusNav() {
-    const { connected, lastPrice, priceDirection, symbol } = useMarketStore();
-    const { send } = useWebSocket();
+    const {
+        connected, lastPrice, priceDirection, symbol, send,
+        setSymbol, setCandles, setOrderbook, setOptions,
+        setLiquidations, setVwaf, setConfluenceZones
+    } = useMarketStore();
+    const currentView = useSettingsStore(s => s.currentView);
+    const setView = useSettingsStore(s => s.setView);
+    const exchangeView = useSettingsStore(s => s.exchangeView);
+    const setExchangeView = useSettingsStore(s => s.setExchangeView);
+
     const [showSwitcher, setShowSwitcher] = useState(false);
+    const [switching, setSwitching] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [markets, setMarkets] = useState(defaultMarkets);
+    const [markets, setMarkets] = useState<any[]>(
+        defaultMarkets.map(m => ({ ...m, volume: 0, price: '—', change: '—' }))
+    );
     const settingsBtnRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
+        let ws: WebSocket;
+        let isMounted = true;
+
         fetch('https://fapi.binance.com/fapi/v1/ticker/24hr')
             .then(res => res.json())
             .then(data => {
-                const perps = data.filter((d: any) => d.symbol.endsWith('USDT')).slice(0, 50);
-                const formatted = perps.map((p: any) => ({
+                if (!isMounted) return;
+                const perps = data.filter((d: any) => d.symbol.endsWith('USDT'));
+                perps.sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+
+                const top20 = perps.slice(0, 20);
+                const initialMarkets = top20.map((p: any) => ({
                     symbol: p.symbol,
-                    price: parseFloat(p.lastPrice).toLocaleString('en-US', { minimumFractionDigits: 2 }),
+                    price: parseFloat(p.lastPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
                     change: `${parseFloat(p.priceChangePercent) > 0 ? '+' : ''}${parseFloat(p.priceChangePercent).toFixed(2)}%`,
                     neg: parseFloat(p.priceChangePercent) < 0,
                     volume: parseFloat(p.quoteVolume)
                 }));
-                formatted.sort((a: any, b: any) => b.volume - a.volume);
-                setMarkets(formatted.slice(0, 20));
+
+                setMarkets(initialMarkets);
+
+                // Open WebSocket for live updates
+                ws = new WebSocket('wss://fstream.binance.com/ws/!ticker@arr');
+                ws.onmessage = (event) => {
+                    if (!isMounted) return;
+                    const msg = JSON.parse(event.data);
+                    if (!Array.isArray(msg)) return;
+
+                    setMarkets(prev => {
+                        let updated = false;
+                        const next = prev.map(m => {
+                            const update = msg.find((t: any) => t.s === m.symbol);
+                            if (update) {
+                                updated = true;
+                                return {
+                                    ...m,
+                                    price: parseFloat(update.c).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
+                                    change: `${parseFloat(update.P) > 0 ? '+' : ''}${parseFloat(update.P).toFixed(2)}%`,
+                                    neg: parseFloat(update.P) < 0,
+                                    volume: parseFloat(update.q)
+                                };
+                            }
+                            return m;
+                        });
+                        return updated ? next : prev;
+                    });
+                };
             })
             .catch(console.error);
+
+        return () => {
+            isMounted = false;
+            if (ws) ws.close();
+        };
     }, []);
 
     const activeMarket = symbol;
 
     const handleSelectMarket = (sym: string) => {
-        send({ action: 'switch_symbol', symbol: sym });
-    }
+        if (sym === symbol) return;
 
-    // Hotkeys
+        // Visual switching state
+        setSwitching(true);
+
+        // Optimistic UI update
+        setSymbol(sym);
+
+        // Clear stale data to show loading/blank states
+        setCandles([]);
+        setOrderbook({ bids: [], asks: [], walls: { bid_walls: [], ask_walls: [] } });
+        setOptions(null);
+        setLiquidations(null);
+        setVwaf(null);
+        setConfluenceZones([]);
+
+        // Send to server
+        send({ action: 'switch_symbol', symbol: sym });
+        setShowSwitcher(false);
+
+        // Clear switching state after timeout
+        setTimeout(() => setSwitching(false), 2000);
+    };
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             // Don't fire if typing in an input
@@ -525,7 +601,7 @@ export function TerminusNav() {
         };
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [send]);
+    }, [send, symbol, setSymbol, setCandles, setOrderbook, setOptions, setLiquidations, setVwaf, setConfluenceZones]);
 
     const activeDataFallback = markets.find(m => m.symbol === activeMarket) || markets[0];
     const displayPrice = lastPrice > 0 ? lastPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : activeDataFallback.price;
@@ -556,27 +632,92 @@ export function TerminusNav() {
                     <span className={connected ? "badge badge-live" : "badge badge-hot"}>{connected ? 'LIVE' : 'OFFLINE'}</span>
                 </div>
 
+                {/* Breadcrumb / Nav toggle */}
+                {currentView !== 'chart' && (
+                    <div style={{
+                        display: "flex", alignItems: "center", borderRight: "1px solid var(--border-medium)",
+                        padding: "0 16px", background: "rgba(255,255,255,0.03)"
+                    }}>
+                        <button
+                            onClick={() => setView('chart')}
+                            style={{
+                                color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer",
+                                fontSize: "var(--text-md)", fontWeight: "bold", display: "flex", alignItems: "center", gap: 8,
+                                letterSpacing: 1
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = "var(--text-primary)"}
+                            onMouseLeave={e => e.currentTarget.style.color = "var(--text-muted)"}
+                        >
+                            <span>←</span> CHART
+                        </button>
+                        <span style={{ margin: "0 12px", color: "var(--border-strong)" }}>/</span>
+                        <span style={{ color: "var(--accent)", fontSize: "var(--text-md)", fontWeight: "bold", letterSpacing: 1, textTransform: "uppercase" }}>
+                            {currentView === 'backtest' ? 'BACKTEST' :
+                                currentView === 'exchange' ? exchangeView :
+                                    currentView}
+                        </span>
+                    </div>
+                )}
+
                 {/* Market display — clickable */}
                 <button
                     onClick={() => setShowSwitcher(true)}
                     style={{
-                        padding: "0 16px", border: "none", borderRight: "1px solid var(--border-medium)",
-                        background: "rgba(255,255,255,0.03)", cursor: "pointer",
-                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "0 24px", display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+                        background: "transparent", border: "none", borderRight: "1px solid var(--border-medium)",
+                        opacity: switching ? 0.6 : 1, transition: "opacity 0.2s"
                     }}
                 >
-                    <div style={{ textAlign: "left" }}>
-                        <div style={{ fontSize: 11, fontWeight: "bold", color: "var(--accent)", letterSpacing: 1 }}>
-                            {activeMarket} <span style={{ fontSize: 9, color: "var(--text-muted)" }}>PERP</span>
-                        </div>
-                        <div className={activeDataFallback.neg ? "neg" : "pos"} style={{ fontSize: 10 }}>
-                            {activeDataFallback.change}
-                        </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: "var(--text-primary)", display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {switching ? (
+                                <span style={{ animation: 'spin 0.6s linear infinite', display: 'inline-block' }}>◌</span>
+                            ) : null}
+                            {symbol.replace('USDT', '')}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>/USDT PERP</span>
                     </div>
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ color: "var(--text-muted)" }}>
                         <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                     </svg>
                 </button>
+
+                {/* Exchange Pills */}
+                <div style={{ display: "flex", alignItems: "center", borderRight: "1px solid var(--border-medium)", padding: "0 12px", gap: 4 }}>
+                    {[
+                        { id: 'binance', label: 'Binance' },
+                        { id: 'bybit', label: 'Bybit' },
+                        { id: 'okx', label: 'OKX' },
+                        { id: 'hyperliquid', label: 'Hyperliquid' }
+                    ].map(ex => (
+                        <button
+                            key={ex.id}
+                            onClick={() => {
+                                setExchangeView(ex.id as any);
+                                setView('exchange');
+                            }}
+                            style={{
+                                background: exchangeView === ex.id && currentView === 'exchange' ? 'rgba(0, 255, 200, 0.1)' : 'transparent',
+                                color: exchangeView === ex.id && currentView === 'exchange' ? 'var(--accent)' : 'var(--text-muted)',
+                                border: `1px solid ${exchangeView === ex.id && currentView === 'exchange' ? 'var(--accent)' : 'var(--border-medium)'}`,
+                                borderRadius: 'var(--r-md)', padding: '2px 8px', fontSize: 10, cursor: 'pointer', fontFamily: 'var(--font)',
+                                transition: "all 0.15s", whiteSpace: 'nowrap'
+                            }}
+                            onMouseEnter={e => {
+                                if (!(exchangeView === ex.id && currentView === 'exchange')) {
+                                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                }
+                            }}
+                            onMouseLeave={e => {
+                                if (!(exchangeView === ex.id && currentView === 'exchange')) {
+                                    e.currentTarget.style.background = 'transparent';
+                                }
+                            }}
+                        >
+                            {ex.label}
+                        </button>
+                    ))}
+                </div>
 
                 {/* Nav items */}
                 <div style={{ display: "flex", alignItems: "stretch", borderRight: "1px solid var(--border-medium)" }}>
@@ -588,13 +729,15 @@ export function TerminusNav() {
 
                     {/* Top right icons */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <button
-                            className="btn btn-icon"
-                            style={{ border: 'none', background: 'transparent' }}
-                            onClick={() => showToast('Fullscreen toggled', 'info')}
-                        >
-                            ◱
-                        </button>
+                        <div className="btn btn-icon" title="Fullscreen">
+                            <button
+                                className="btn btn-icon"
+                                style={{ border: 'none', background: 'transparent' }}
+                                onClick={() => showToast('Fullscreen toggled', 'info', 'system', true)}
+                            >
+                                ◱
+                            </button>
+                        </div>
                         <button
                             ref={settingsBtnRef}
                             onClick={() => setSettingsOpen(true)}
@@ -603,13 +746,15 @@ export function TerminusNav() {
                         >
                             ⚙
                         </button>
-                        <button
-                            className="btn btn-icon"
-                            style={{ border: 'none', background: 'transparent' }}
-                            onClick={() => showToast('Widgets panel toggled', 'info')}
-                        >
-                            ⊞
-                        </button>
+                        <div className="btn btn-icon" title="Widgets">
+                            <button
+                                className="btn btn-icon"
+                                style={{ border: 'none', background: 'transparent' }}
+                                onClick={() => showToast('Widgets panel toggled', 'info', 'system', true)}
+                            >
+                                ⊞
+                            </button>
+                        </div>
                     </div>
 
                     <div className="divider" />

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { createChart, ColorType, CrosshairMode, LineStyle } from 'lightweight-charts';
 import type {
     IChartApi,
@@ -105,9 +105,9 @@ interface ChartProps {
 
 export function Chart({
     timezoneOffset = 7,
-    activeTool = 'none', drawings = [], setDrawings = () => { },
-    activeIndicators = new Set(['volume']),
-    onSelectDrawing = () => { }, selectedDrawing = null,
+    activeTool = 'none', drawings = [], setDrawings = (() => { }) as React.Dispatch<React.SetStateAction<Drawing[]>>,
+    activeIndicators = new Set(['volume']) as Set<IndicatorKey>,
+    onSelectDrawing = (_id: string | null) => { }, selectedDrawing = null,
     onToolEnd = () => { }
 }: ChartProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -140,6 +140,10 @@ export function Chart({
     const initialLoadRef = useRef(false);
     const cachedWallsRef = useRef<any[]>([]);
     const lastWallUpdateRef = useRef<number>(0);
+
+    const rafRef = useRef<number | null>(null);
+    const needsRedrawRef = useRef(false);
+    const drawCanvasRef = useRef<(() => void) | undefined>(undefined);
 
     // ── Persistence: Load ──
     useEffect(() => {
@@ -747,7 +751,7 @@ export function Chart({
     }, [activeTool]);
 
     // ── Render drawings on canvas overlay (TV-like) ────────
-    useEffect(() => {
+    const drawCanvas = useCallback(() => {
         const canvas = canvasRef.current;
         const chart = chartRef.current;
         if (!canvas || !chart) return;
@@ -1123,7 +1127,29 @@ export function Chart({
         }
 
         ctx.restore();
-    }, [drawings, candles, selectedDrawing, activeIndicators]);
+    }, [drawings, candles, selectedDrawing, activeIndicators, timeframe, liquidations]);
+
+    useEffect(() => {
+        drawCanvasRef.current = drawCanvas;
+        needsRedrawRef.current = true;
+    }, [drawCanvas]);
+
+    useEffect(() => {
+        const loop = () => {
+            const hasAnim = activeIndicators.has('resting_liq') && INDICATOR_RELEVANCE['resting_liq'].includes(timeframe);
+            if (hasAnim) needsRedrawRef.current = true;
+
+            if (needsRedrawRef.current && drawCanvasRef.current) {
+                needsRedrawRef.current = false;
+                drawCanvasRef.current();
+            }
+            rafRef.current = requestAnimationFrame(loop);
+        };
+        rafRef.current = requestAnimationFrame(loop);
+        return () => {
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        };
+    }, [activeIndicators, timeframe]);
 
     // ─ Redraw on scroll/zoom
     useEffect(() => {
@@ -1131,10 +1157,7 @@ export function Chart({
         if (!chart) return;
 
         const redraw = () => {
-            const canvas = canvasRef.current;
-            if (!canvas) return;
-            // Trigger effect by forcing re-render
-            setDrawings((d) => [...d]);
+            needsRedrawRef.current = true;
         };
 
         chart.timeScale().subscribeVisibleTimeRangeChange(redraw);

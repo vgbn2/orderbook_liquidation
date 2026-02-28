@@ -1,15 +1,31 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useMarketStore } from '../stores/marketStore';
 
 export function AlertManager({ onClose }: { onClose: () => void }) {
-    const [alerts, setAlerts] = useState<any[]>([]);
+    const storeAlerts = useMarketStore(s => s.activeAlerts);
+    const [localAlerts, setLocalAlerts] = useState<any[]>([]);
 
     useEffect(() => {
         const handleAlert = (e: any) => {
-            setAlerts(prev => [e.detail, ...prev].slice(0, 50));
+            setLocalAlerts(prev => [e.detail, ...prev].slice(0, 50));
         };
         window.addEventListener('terminal_alert' as any, handleAlert);
         return () => window.removeEventListener('terminal_alert' as any, handleAlert);
     }, []);
+
+    const alerts = useMemo(() => {
+        const combined = [...storeAlerts, ...localAlerts];
+        const seen = new Set<string>();
+        return combined
+            .filter(a => {
+                const id = a.id || (a.time + a.type);
+                if (seen.has(id)) return false;
+                seen.add(id);
+                return true;
+            })
+            .sort((a, b) => b.time - a.time)
+            .slice(0, 50);
+    }, [storeAlerts, localAlerts]);
 
     return (
         <div style={{

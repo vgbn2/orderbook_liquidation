@@ -200,6 +200,12 @@ html,
   border-color: var(--accent-border) !important;
 }
 
+.btn.active-warn {
+  background: rgba(240, 192, 64, 0.1) !important;
+  color: var(--warning) !important;
+  border-color: rgba(240, 192, 64, 0.25) !important;
+}
+
 .btn-primary,
 .variant-primary {
   background: var(--accent);

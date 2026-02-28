@@ -15,6 +15,8 @@ export function useWebSocket() {
 
     // Batching state
     const reqFrameRef = useRef<number | null>(null);
+    const pendingMessages = useRef<any[]>([]);
+    const activeCandleTopic = useRef<string | null>(null);
 
     const {
         symbol, setSymbol, timeframe,
@@ -23,7 +25,7 @@ export function useWebSocket() {
         addLiquidation, setFundingRates, setOpenInterest,
         setVwaf, setConfluenceZones, addTrade,
         setReplayMode, setReplayTimestamp, isReplayMode,
-        setQuantSnapshot
+        setQuantSnapshot, setSend
     } = useMarketStore();
 
     const handleRef = useRef<any>(null);
@@ -49,11 +51,29 @@ export function useWebSocket() {
             setConnected(true);
             reconnectAttempts.current = 0;
 
+            // Register send function in store so any component can use it
+            setSend((msg: any) => {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(msg));
+                } else {
+                    // Queue for reconnect
+                    pendingMessages.current.push(msg);
+                }
+            });
+
+            // Flush any queued messages
+            while (pendingMessages.current.length > 0) {
+                ws.send(JSON.stringify(pendingMessages.current.shift()));
+            }
+
+            const initialTopic = `candles.binance.${symbol.toUpperCase()}.${timeframe}`;
+            activeCandleTopic.current = initialTopic;
+
             // Subscribe to all data topics
             ws.send(JSON.stringify({
                 action: 'subscribe',
                 topics: [
-                    `candles.binance.${symbol.toUpperCase()}.${timeframe}`,
+                    initialTopic,
                     'orderbook.aggregated',
                     'options.analytics',
                     'liquidations',
@@ -85,6 +105,7 @@ export function useWebSocket() {
         };
 
         ws.onclose = () => {
+            setSend(() => { }); // clear send while disconnected
             setConnected(false);
             scheduleReconnect();
         };
@@ -185,24 +206,34 @@ export function useWebSocket() {
                     case 'trades':
                         addTrade(msg.data as any);
                         break;
+                    case 'alerts':
+                        useMarketStore.getState().addAlert(msg.data as any);
+                        window.dispatchEvent(new CustomEvent('terminal_alert', { detail: msg.data }));
+                        if ((msg.data as any).severity === 'critical') {
+                            window.dispatchEvent(new CustomEvent('terminus_toast', {
+                                detail: {
+                                    message: `${(msg.data as any).type}: ${(msg.data as any).message}`,
+                                    type: 'error',
+                                    tier: 'alert'
+                                }
+                            }));
+                        } else if ((msg.data as any).severity === 'warn') {
+                            window.dispatchEvent(new CustomEvent('terminus_toast', {
+                                detail: {
+                                    message: `${(msg.data as any).type}: ${(msg.data as any).message}`,
+                                    type: 'warn',
+                                    tier: 'alert'
+                                }
+                            }));
+                        }
+                        break;
                     case 'quant.analytics':
                         setQuantSnapshot(msg.data as any);
                         break;
                     case 'symbol_changed':
-                        if (msg.data && (msg.data as any).symbol) {
-                            const newSym = (msg.data as any).symbol;
-                            setSymbol(newSym);
-                            if (wsRef.current?.readyState === WebSocket.OPEN) {
-                                wsRef.current.send(JSON.stringify({
-                                    action: 'subscribe',
-                                    topics: [`candles.binance.${newSym.toUpperCase()}.${timeframe}`]
-                                }));
-                                wsRef.current.send(JSON.stringify({
-                                    action: 'unsubscribe',
-                                    topics: [`candles.binance.${symbol.toUpperCase()}.${timeframe}`]
-                                }));
-                            }
-                        }
+                        // Symbol change is triggered optimistically in the UI. 
+                        // The active subscription switching is handled automatically by the useEffect below
+                        // acting on the store's symbol state changes.
                         break;
                 }
             }
@@ -247,20 +278,24 @@ export function useWebSocket() {
         };
     }, [connect]);
 
-    // Update subscriptions on timeframe change
+    // Update subscriptions on timeframe or symbol change
     useEffect(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
+            const newTopic = `candles.binance.${symbol.toUpperCase()}.${timeframe}`;
+
+            if (activeCandleTopic.current && activeCandleTopic.current !== newTopic) {
+                wsRef.current.send(JSON.stringify({
+                    action: 'unsubscribe',
+                    topics: [activeCandleTopic.current]
+                }));
+            }
+
             wsRef.current.send(JSON.stringify({
                 action: 'subscribe',
-                topics: [`candles.binance.${symbol.toUpperCase()}.${timeframe}`]
+                topics: [newTopic]
             }));
 
-            // Unsubscribe from other timeframes
-            const others = ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'].filter(t => t !== timeframe);
-            wsRef.current.send(JSON.stringify({
-                action: 'unsubscribe',
-                topics: others.map(t => `candles.binance.${symbol.toUpperCase()}.${t}`)
-            }));
+            activeCandleTopic.current = newTopic;
         }
     }, [timeframe, symbol]);
 
