@@ -56,8 +56,8 @@ export class TradeBatcher {
 
         const values: any[] = [];
         for (const t of batch) {
-            // Convert ms timestamp to seconds for TO_TIMESTAMP
-            values.push(t.time / 1000.0, t.exchange, t.symbol, t.price, t.qty, t.side);
+            // Convert ms timestamp to JS Date for PostgreSQL timestamptz
+            values.push(new Date(t.time), t.exchange, t.symbol, t.price, t.qty, t.side);
         }
 
         try {
