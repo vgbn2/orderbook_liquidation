@@ -59,12 +59,12 @@ function connect(symbol: string) {
             const msg = JSON.parse(data.toString());
             if (msg.topic === `orderbook.50.${symbol}` && msg.data) {
 
-                // Bybit v5 specific sequence checking
-                const currentSeq = msg.data.seq || msg.seq;
+                // Bybit v5: 'u' is the contiguous update ID, 'seq' is cross-stream cross-symbol sequence
+                const currentU = msg.data.u;
 
                 if (msg.type === 'snapshot') {
-                    // Initial snapshot establishes the baseline seq
-                    lastSeq = currentSeq;
+                    // Initial snapshot establishes the baseline update ID
+                    lastSeq = currentU;
 
                     orderbookEngine.initSnapshot('bybit', {
                         lastUpdateId: Date.now(),
@@ -73,16 +73,16 @@ function connect(symbol: string) {
                     });
                 } else if (msg.type === 'delta') {
                     // Check logic: Contiguous update?
-                    if (lastSeq !== null && currentSeq) {
-                        if (currentSeq !== lastSeq + 1) {
+                    if (lastSeq !== null && currentU) {
+                        if (currentU !== lastSeq + 1) {
                             // Gap detected
-                            logger.error({ expected: lastSeq + 1, received: currentSeq }, 'Bybit Sequence Gap');
+                            logger.error({ expected: lastSeq + 1, received: currentU }, 'Bybit Sequence Gap');
                             wipeAndResync(symbol);
                             return;
                         }
                     }
 
-                    lastSeq = currentSeq;
+                    lastSeq = currentU;
 
                     orderbookEngine.applyDelta('bybit', {
                         u: Date.now(),
