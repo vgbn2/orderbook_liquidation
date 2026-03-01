@@ -18,7 +18,7 @@ export const redis = new Redis({
 export const redisSub = new Redis({
     host: config.REDIS_HOST,
     port: config.REDIS_PORT,
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: null, // Critical for pub/sub to keep retrying
     retryStrategy(times) {
         return Math.min(times * 200, 5_000);
     },
@@ -55,6 +55,10 @@ export async function cacheGet<T = unknown>(key: string): Promise<T | null> {
 /** Graceful shutdown */
 export async function closeRedis(): Promise<void> {
     logger.info('Closing Redis connections...');
-    await redis.quit();
-    await redisSub.quit();
+    try {
+        if (redis.status !== 'end') await redis.quit();
+        if (redisSub.status !== 'end') await redisSub.quit();
+    } catch (err) {
+        logger.error({ err }, 'Error closing Redis');
+    }
 }

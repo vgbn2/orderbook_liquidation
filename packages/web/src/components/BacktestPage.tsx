@@ -167,6 +167,7 @@ function OverviewTab({ result }: { result: BacktestResult }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <StatCard label="TOTAL TRADES" value={result.totalTrades.toString()} />
                         <StatCard label="WIN RATE" value={`${result.winRate.toFixed(1)}%`} />
+                        <StatCard label="MAX STREAK (W/L)" value={`${result.maxWinStreak} / ${result.maxLossStreak}`} />
                         <StatCard label="EXPECTED VALUE (EV)" value={`${result.ev >= 0 ? '+' : ''}${result.ev.toFixed(2)}%`} trend={result.ev >= 0 ? 'up' : 'down'} />
                         <StatCard label="AVG RISK-REWARD (R:R)" value={`1 : ${(avgLoss !== 0 ? Math.abs(avgWin / avgLoss) : 0).toFixed(2)}`} />
                         <StatCard label="AVG WIN / LOSS" value={`${avgWin > 0 ? '+' : ''}${avgWin.toFixed(2)}% / ${avgLoss.toFixed(2)}%`} />
@@ -187,6 +188,7 @@ function OverviewTab({ result }: { result: BacktestResult }) {
                     <div className="label" style={{ marginBottom: 12 }}>FEES & COSTS</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <StatCard label="TOTAL FEES" value={`-$${result.totalFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} trend="down" />
+                        <StatCard label="SLIPPAGE COST" value={`$${result.slippageCosts.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} trend="down" />
                         <StatCard label="ENTRY FEES" value={`$${result.entryFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
                         <StatCard label="EXIT FEES" value={`$${result.exitFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
                         <StatCard label="HOLDING FEES" value={`$${result.holdingFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
@@ -206,12 +208,38 @@ function OverviewTab({ result }: { result: BacktestResult }) {
                 <div>
                     <div className="label" style={{ marginBottom: 12 }}>STATISTICAL ANALYSIS</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <StatCard label="TUD (TOTAL)" value={`${result.timeUnderDrawdownPct.toFixed(1)}%`} trend="down" />
+                        <StatCard label="TUD (TOTAL)" value={`${result.timeUnderDrawdownDays.toFixed(1)} Days`} trend="down" />
                         <StatCard label="ACTIVE RECOVERY" value={`${result.activeRecoveryPct.toFixed(1)}%`} />
                         <StatCard label="WAITING FOR SETUP" value={`${result.waitingForSetupPct.toFixed(1)}%`} />
                         <StatCard label="CONSOLIDATION RANGE" value={`$${result.consolidationRange.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} trend="neutral" />
                     </div>
                 </div>
+
+                {result.monteCarlo && (
+                    <div>
+                        <div className="label" style={{ marginBottom: 12 }}>ROBUSTNESS (MONTE CARLO)</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <StatCard
+                                label="PROBABILITY OF RUIN"
+                                value={`${result.monteCarlo.probOfRuin.toFixed(1)}%`}
+                                trend={result.monteCarlo.probOfRuin > 10 ? 'down' : 'up'}
+                            />
+                            <StatCard
+                                label="95% CONFIDENCE (P95)"
+                                value={`$${result.monteCarlo.confidenceIntervals.p95.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                            />
+                            <StatCard
+                                label="MEDIAN EXPECTANCY (P50)"
+                                value={`$${result.monteCarlo.confidenceIntervals.p50.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                            />
+                            <StatCard
+                                label="5% WORST CASE (P5)"
+                                value={`$${result.monteCarlo.confidenceIntervals.p5.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                trend="down"
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div>

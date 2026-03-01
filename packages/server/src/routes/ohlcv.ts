@@ -13,7 +13,7 @@ export async function ohlcvRoutes(app: FastifyInstance): Promise<void> {
      */
     app.get('/api/ohlcv', async (req, reply) => {
         const { symbol = 'BTCUSDT', interval = '1m', limit = '500' } = req.query as Record<string, string>;
-        const numLimit = Math.min(parseInt(limit) || 500, 10000);
+        const numLimit = Math.min(parseInt(limit) || 500, 100000);
 
         try {
             // Try DB first

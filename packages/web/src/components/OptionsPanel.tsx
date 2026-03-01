@@ -78,24 +78,64 @@ export function OptionsPanel() {
                     <span>GEX BY STRIKE</span>
                 </div>
                 <div className="p-body">
-                    <div style={{ height: '80px', display: 'flex', alignItems: 'flex-end', gap: '2px', borderBottom: '1px solid var(--border-medium)', paddingBottom: '2px' }}>
+                    <div style={{ height: 120, position: 'relative', display: 'flex', alignItems: 'stretch', gap: 2, padding: '0 2px' }}>
+                        {/* Zero baseline */}
+                        <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: 'var(--border-strong)', zIndex: 2, pointerEvents: 'none' }} />
+
                         {gexEntries.map((e) => {
-                            const pct = (Math.abs(e.gex) / maxAbsGex) * 80;
+                            const HALF = 56; // max bar height each direction (leaves space)
+                            const barH = Math.max(2, (Math.abs(e.gex) / maxAbsGex) * HALF);
                             const isPositive = e.gex >= 0;
+
+                            const spotPrice = useMarketStore.getState().lastPrice;
+                            const isNearSpot = spotPrice ? Math.abs(e.strike - spotPrice) / spotPrice < 0.005 : false;
+
                             return (
-                                <div key={e.strike} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
-                                    <div
-                                        style={{
-                                            height: `${Math.max(2, pct)}px`,
-                                            background: isPositive ? 'var(--positive)' : 'var(--negative)',
-                                            opacity: 0.7,
-                                            borderRadius: '1px'
-                                        }}
-                                        title={`${(e.strike / 1000).toFixed(1)}K: ${fmtGex(e.gex)}`}
-                                    />
+                                <div
+                                    key={e.strike}
+                                    title={`${(e.strike / 1000).toFixed(1)}K: ${fmtGex(e.gex)}`}
+                                    style={{
+                                        flex: 1,
+                                        height: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'stretch',
+                                        background: isNearSpot ? 'rgba(255,255,255,0.04)' : 'transparent',
+                                        borderLeft: isNearSpot ? '1px solid rgba(255,255,255,0.2)' : 'none',
+                                    }}
+                                >
+                                    {/* TOP HALF — negative bars grow downward into this space */}
+                                    <div style={{ height: '50%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingBottom: 0 }}>
+                                        {!isPositive && (
+                                            <div style={{ height: barH, background: 'var(--negative)', opacity: 0.8, borderRadius: '2px 2px 0 0' }} />
+                                        )}
+                                    </div>
+
+                                    {/* BOTTOM HALF — positive bars grow upward into this space */}
+                                    <div style={{ height: '50%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', paddingTop: 0 }}>
+                                        {isPositive && (
+                                            <div style={{ height: barH, background: 'var(--positive)', opacity: 0.8, borderRadius: '0 0 2px 2px' }} />
+                                        )}
+                                    </div>
                                 </div>
                             );
                         })}
+                    </div>
+                    {/* Strike labels row — sparse, below the histogram div */}
+                    <div style={{ display: 'flex', gap: 2, padding: '2px 2px 0', marginTop: 2 }}>
+                        {gexEntries.map((e, i) => (
+                            <div key={e.strike} style={{
+                                flex: 1,
+                                textAlign: 'center',
+                                fontSize: 8,
+                                color: 'var(--text-muted)',
+                                overflow: 'hidden',
+                                // Only show every 3rd label to avoid crowding
+                                opacity: i % 3 === 1 ? 1 : 0,
+                            }}>
+                                {(e.strike / 1000).toFixed(0)}k
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>

@@ -12,11 +12,13 @@ import { binanceAdapter } from './adapters/binance.js';
 import { startBybit, stopBybit } from './adapters/bybit.js';
 import { startOkx, stopOkx } from './adapters/okx.js';
 import { startDeribit, stopDeribit } from './adapters/deribit.js';
+import { startHyperliquid, stopHyperliquid } from './adapters/hyperliquid.js';
 import { ohlcvRoutes } from './routes/ohlcv.js';
 import { optionsEngine, generateSimulatedChain, generateSimulatedTrade } from './engines/options.js';
 import { liquidationEngine, generateSimulatedLiquidation, seedLiquidationHistory } from './engines/liquidations.js';
 import { vwafEngine, generateSimulatedFunding } from './engines/vwaf.js';
 import { confluenceEngine } from './engines/confluence.js';
+import { ictEngine } from './engines/ict.js';
 import { alertsEngine } from './engines/alerts.js';
 import { replayEngine } from './engines/replay.js';
 import { quantEngine } from './engines/quant.js';
@@ -81,6 +83,9 @@ async function start(): Promise<void> {
 
     logger.info('Connecting to Deribit...');
     startDeribit(globalSymbol);
+
+    logger.info('Connecting to Hyperliquid...');
+    startHyperliquid(globalSymbol);
 
     // Fetch initial historical candles
     const historicalCandles = await binanceAdapter.fetchKlines(globalSymbol, '1m', 500);
@@ -199,7 +204,10 @@ async function start(): Promise<void> {
 
             // Feed liquidation heatmap
             const liqHeatmap = liquidationEngine.getHeatmap?.();
-            if (liqHeatmap) confluenceEngine.setLiqHeatmap(liqHeatmap);
+            if (liqHeatmap) {
+                confluenceEngine.setLiqHeatmap(liqHeatmap);
+                ictEngine.setLiqHeatmap(liqHeatmap);
+            }
 
             // Feed VWAF data
             const vwafData = vwafEngine.compute();
@@ -274,15 +282,18 @@ async function start(): Promise<void> {
                         replayEngine.stopSession(clientId);
                     } else if (msg.action === 'switch_symbol') {
                         const newSymbol = msg.symbol;
+                        const oldSymbol = globalSymbol;
                         globalSymbol = newSymbol.toUpperCase();
                         logger.info(`Switching global market to ${globalSymbol}`);
 
-                        stopBybit(globalSymbol);
-                        stopOkx(globalSymbol);
-                        stopDeribit(globalSymbol);
+                        stopBybit(oldSymbol);
+                        stopOkx(oldSymbol);
+                        stopDeribit(oldSymbol);
+                        stopHyperliquid(oldSymbol);
                         startBybit(globalSymbol);
                         startOkx(globalSymbol);
                         startDeribit(globalSymbol);
+                        startHyperliquid(globalSymbol);
 
                         binanceAdapter.switchSymbol(globalSymbol).then(() => {
                             binanceAdapter.fetchKlines(globalSymbol, '1m', 500).then(candles => {
@@ -337,6 +348,7 @@ async function shutdown(signal: string): Promise<void> {
     stopBybit(globalSymbol);
     stopOkx(globalSymbol);
     stopDeribit(globalSymbol);
+    stopHyperliquid(globalSymbol);
     await wsManager.disconnectAll();
 
     // 3. Close database connections
@@ -350,13 +362,25 @@ async function shutdown(signal: string): Promise<void> {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
-process.on('uncaughtException', (err) => {
-    logger.fatal({ err }, 'Uncaught exception');
+process.on('uncaughtException', (err: any) => {
+    // Some errors (like ECONNRESET) should NOT crash the server if they happen in background tasks
+    if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
+        logger.warn({ err }, 'Handled uncaught network exception (preventing crash)');
+        return;
+    }
+
+    logger.fatal({ err }, 'Uncaught exception - shutting down');
     shutdown('uncaughtException');
 });
 
-process.on('unhandledRejection', (reason) => {
-    logger.fatal({ reason }, 'Unhandled rejection');
+process.on('unhandledRejection', (reason: any) => {
+    // Log but don't necessarily crash on empty or minor rejections
+    if (!reason || Object.keys(reason).length === 0) {
+        logger.warn('Empty unhandledRejection detected (preventing crash)');
+        return;
+    }
+
+    logger.fatal({ reason }, 'Unhandled rejection - shutting down');
     shutdown('unhandledRejection');
 });
 

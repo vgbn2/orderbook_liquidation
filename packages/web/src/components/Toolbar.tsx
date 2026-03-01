@@ -38,6 +38,9 @@ const MORE_INDICATORS = [
             { id: 'vwap', label: 'VWAP', desc: 'Volume-weighted average price' },
             { id: 'session_boxes', label: 'Sessions', desc: 'Asia / London / NY boxes' },
             { id: 'resting_liq', label: 'Resting Liq', desc: 'Order book walls visualized', badge: 'FIXED' },
+            { id: 'ict_fvg', label: 'ICT FVG', desc: 'Fair Value Gaps' },
+            { id: 'ict_ob', label: 'ICT Order Blocks', desc: 'Institutional Order Blocks' },
+            { id: 'ict_sweeps', label: 'ICT Sweeps', desc: 'Liquidity sweep detection' },
             { id: 'funding_rate', label: 'Funding', desc: 'Rate histogram overlay' },
         ]
     },
@@ -48,7 +51,7 @@ const MORE_INDICATORS = [
             { id: 'open_interest', label: 'OI', desc: 'Open interest divergence' },
             { id: 'rsi', label: 'RSI', desc: 'Relative strength index' },
             { id: 'macd', label: 'MACD', desc: 'Momentum oscillator' },
-            { id: 'vol_profile', label: 'Vol Profile', desc: 'Horizontal volume distribution', badge: 'SOON' },
+            { id: 'vol_profile', label: 'Vol Profile', desc: 'Horizontal volume distribution' },
         ]
     },
     {

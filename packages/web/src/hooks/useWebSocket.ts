@@ -25,7 +25,8 @@ export function useWebSocket() {
         addLiquidation, setFundingRates, setOpenInterest,
         setVwaf, setConfluenceZones, addTrade,
         setReplayMode, setReplayTimestamp, isReplayMode,
-        setQuantSnapshot, setSend
+        setQuantSnapshot, setIctData, setConfirmedSweeps,
+        addHtfCandle, setSend
     } = useMarketStore();
 
     const handleRef = useRef<any>(null);
@@ -82,6 +83,10 @@ export function useWebSocket() {
                     'trades',
                     'alerts',
                     'quant.analytics',
+                    'ict.data',
+                    'ict.sweep_confirmed',
+                    `candles.binance.${symbol.toUpperCase()}.4h`,
+                    `candles.binance.${symbol.toUpperCase()}.1d`,
                 ],
             }));
         };
@@ -157,6 +162,9 @@ export function useWebSocket() {
                         if (candle.isUpdate) updateLastCandle(candle);
                         else addCandle(candle);
                         setLastPrice(candle.close);
+                    } else {
+                        // HTF candle
+                        addHtfCandle(tf, candle);
                     }
 
                     const { setMultiTfCvd, multiTfCvd } = useMarketStore.getState();
@@ -230,11 +238,21 @@ export function useWebSocket() {
                     case 'quant.analytics':
                         setQuantSnapshot(msg.data as any);
                         break;
-                    case 'symbol_changed':
-                        // Symbol change is triggered optimistically in the UI. 
-                        // The active subscription switching is handled automatically by the useEffect below
-                        // acting on the store's symbol state changes.
+                    case 'ict.data':
+                        setIctData(msg.data);
                         break;
+                    case 'ict.sweep_confirmed': {
+                        const sweep = msg.data as any;
+                        setConfirmedSweeps([sweep, ...useMarketStore.getState().confirmedSweeps].slice(0, 50));
+                        break;
+                    }
+                    case 'symbol_changed': {
+                        const { symbol: confirmedSymbol } = msg.data as { symbol: string };
+                        window.dispatchEvent(new CustomEvent('terminus_symbol_confirmed', {
+                            detail: { symbol: confirmedSymbol }
+                        }));
+                        break;
+                    }
                 }
             }
         }
@@ -242,6 +260,7 @@ export function useWebSocket() {
         addCandle, updateLastCandle, setLastPrice, setOrderbook, setOptions, addOptionTrade,
         setLiquidations, addLiquidation, setFundingRates, setOpenInterest, setVwaf,
         setConfluenceZones, addTrade, setReplayMode, setReplayTimestamp, isReplayMode, setQuantSnapshot,
+        setIctData, setConfirmedSweeps, addHtfCandle,
         setSymbol, symbol, timeframe, setMetrics
     ]);
 
