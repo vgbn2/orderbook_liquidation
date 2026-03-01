@@ -247,8 +247,11 @@ async function start(): Promise<void> {
 
     // ── WebSocket endpoint for frontend clients ───
     app.register(async function (fastify) {
-        fastify.get('/ws', { websocket: true }, (socket, _req) => {
-            const clientId = clientHub.addClient(socket);
+        fastify.get('/ws', { websocket: true }, (socket, req) => {
+            const clientId = clientHub.addClient(socket, req);
+
+            // If connection was rejected (e.g. rate limit), clientId is null
+            if (!clientId) return;
 
             // On connect, send a snapshot of current state from Redis
             (async () => {

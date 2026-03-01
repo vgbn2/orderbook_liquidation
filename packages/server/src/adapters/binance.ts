@@ -31,6 +31,10 @@ export class BinanceAdapter implements ExchangeAdapter {
     private intervals = ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'];
     private pollTimer: ReturnType<typeof setInterval> | null = null;
 
+    // Sequence checking state for orderbook desync detection
+    private lastUpdateId: number | null = null;
+    private isResyncing = false;
+
     // Trade batching state
     private tradeBatch: any[] = [];
     private tradeBroadcastTimer: ReturnType<typeof setInterval> | null = null;
@@ -230,6 +234,8 @@ export class BinanceAdapter implements ExchangeAdapter {
         }
         orderbookEngine.stop();
         this.health = 'down';
+        this.lastUpdateId = null;
+        this.isResyncing = false;
     }
 
     /**
@@ -293,7 +299,11 @@ export class BinanceAdapter implements ExchangeAdapter {
      * Connect to orderbook depth stream + fetch initial snapshot.
      */
     async connectOrderbook(): Promise<void> {
+        if (this.isResyncing) return;
+
         try {
+            this.lastUpdateId = null; // Reset sequence tracking
+
             // 1. Fetch REST depth snapshot
             const snapRes = await fetch(`${REST_BASE}/fapi/v1/depth?symbol=${this.symbol.toUpperCase()}&limit=100`);
             if (!snapRes.ok) throw new Error(`Depth snapshot ${snapRes.status}`);
@@ -302,20 +312,49 @@ export class BinanceAdapter implements ExchangeAdapter {
                 bids: [string, string][];
                 asks: [string, string][];
             };
+
+            this.lastUpdateId = snap.lastUpdateId;
             orderbookEngine.initSnapshot('binance', snap);
 
             // 2. Subscribe to WS depth deltas
             const url = `${WS_BASE}/${this.symbol}@depth@100ms`;
+
+            // Cleanup existing if any
+            if (this.wsDepth) {
+                this.wsDepth.removeAllListeners();
+                this.wsDepth.close();
+            }
+
             this.wsDepth = new WebSocket(url, { handshakeTimeout: 10_000 });
 
             this.wsDepth.on('open', () => {
                 logger.info('Binance depth stream connected');
+                this.isResyncing = false;
             });
 
             this.wsDepth.on('message', (raw) => {
                 try {
                     const msg = JSON.parse(raw.toString());
                     if (msg.e === 'depthUpdate') {
+                        // FIX 2: Sequence Checking for Orderbook Desync
+                        // u = Final update ID in event
+                        // pu = Final update ID in previous event
+
+                        if (this.lastUpdateId !== null && msg.pu !== this.lastUpdateId) {
+                            // Gap detected! We dropped a packet.
+                            logger.error({
+                                expected: this.lastUpdateId,
+                                receivedPrev: msg.pu,
+                                symbol: this.symbol
+                            }, 'Desync Detected — Refetching Snapshot');
+
+                            this._wipeAndResync();
+                            return;
+                        }
+
+                        // Update sequence tracker
+                        this.lastUpdateId = msg.u;
+
                         orderbookEngine.applyDelta('binance', {
                             u: msg.u,
                             b: msg.b,
@@ -337,8 +376,28 @@ export class BinanceAdapter implements ExchangeAdapter {
             });
         } catch (err) {
             logger.error({ err }, 'Failed to init orderbook');
+            this.isResyncing = false;
             this.depthReconnectTimer = setTimeout(() => this.connectOrderbook(), 5000);
         }
+    }
+
+    /**
+     * Triggered when a sequence gap is detected. Drops WebSocket and refetches REST.
+     */
+    private _wipeAndResync() {
+        if (this.isResyncing) return;
+        this.isResyncing = true;
+
+        if (this.wsDepth) {
+            this.wsDepth.removeAllListeners();
+            this.wsDepth.terminate();
+            this.wsDepth = null;
+        }
+
+        if (this.depthReconnectTimer) clearTimeout(this.depthReconnectTimer);
+
+        // Immediately try to reconnect (which fetches a new REST snapshot)
+        this.connectOrderbook();
     }
 
     /**
