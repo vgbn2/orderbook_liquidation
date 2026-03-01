@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyCors from '@fastify/cors';
+import jwt from 'jsonwebtoken';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { dbHealthCheck, closeDb } from './db/timescale.js';
@@ -245,9 +246,41 @@ async function start(): Promise<void> {
         });
     });
 
+    // ── Generate JWT Token for WebSockets ─────────
+    const JWT_SECRET = process.env.JWT_SECRET || 'terminus-local-dev-secret-key';
+
+    app.post('/api/token', async (req, reply) => {
+        // In a real app, validate req.body.username / password / apiKey here
+        // For now, we simulate success and return a token
+        const token = jwt.sign(
+            { role: 'pro_trader', access: 'full' },
+            JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+        return reply.send({ token });
+    });
+
     // ── WebSocket endpoint for frontend clients ───
     app.register(async function (fastify) {
         fastify.get('/ws', { websocket: true }, (socket, req) => {
+            // FIX 5: JWT Authentication
+            const query = new URLSearchParams(req.url.split('?')[1] || '');
+            const token = query.get('token');
+
+            if (!token) {
+                logger.warn({ ip: req.ip }, 'WebSocket connection rejected: No token provided');
+                socket.close(4001, 'Unauthorized');
+                return;
+            }
+
+            try {
+                jwt.verify(token, JWT_SECRET);
+            } catch (err) {
+                logger.warn({ ip: req.ip }, 'WebSocket connection rejected: Invalid token');
+                socket.close(4003, 'Forbidden');
+                return;
+            }
+
             const clientId = clientHub.addClient(socket, req);
 
             // If connection was rejected (e.g. rate limit), clientId is null
