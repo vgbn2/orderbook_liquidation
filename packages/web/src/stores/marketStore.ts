@@ -1,6 +1,60 @@
 import { create } from 'zustand';
 import { LiqCluster, liqClusterEngine, LiqEvent } from '../engines/liqCluster';
 
+export interface FVG {
+    id: string;
+    type: 'bullish' | 'bearish';
+    top: number;
+    bottom: number;
+    midpoint: number;
+    formedAt: number;
+    filled: boolean;
+    partialFill: number;
+}
+
+export interface OrderBlock {
+    id: string;
+    type: 'bullish' | 'bearish';
+    top: number;
+    bottom: number;
+    formedAt: number;
+    broken: boolean;
+    strength: 'fresh' | 'tested' | 'broken';
+}
+
+export interface ConfirmedSweep {
+    id: string;
+    type: 'BSL' | 'SSL';
+    sweptLevel: number;
+    sweepCandle: CandleData;
+    reversalCandle: CandleData;
+    sweepCloseDistance: number;
+    reversalBars: number;
+    liqBacking: {
+        usdAtLevel: number;
+        longLiqUsd: number;
+        shortLiqUsd: number;
+        isSignificant: boolean;
+    } | null;
+    confidence: 'high' | 'medium' | 'low';
+}
+
+export interface HTFBias {
+    direction: 'bullish' | 'bearish' | 'neutral';
+    aboveSma50: boolean;
+    aboveSma200: boolean;
+    lastSwingHigh: number;
+    lastSwingLow: number;
+    sma20: number;
+    sma50: number;
+    ema200: number;
+    rsi14: number;
+    rangePosition: number;
+    isPremium: boolean;
+    isDiscount: boolean;
+}
+
+
 export interface CandleData {
     time: number;
     open: number;
@@ -167,6 +221,25 @@ interface MarketState {
     multiTfCvd: Record<string, { time: number; value: number }[]>;
     setMultiTfCvd: (tf: string, data: { time: number; value: number }[]) => void;
 
+    // —— ICT ——
+    ictData: {
+        fvgs: FVG[];
+        orderBlocks: OrderBlock[];
+        sweeps: ConfirmedSweep[];
+        swingHighs: { price: number; time: number }[];
+        swingLows: { price: number; time: number }[];
+    } | null;
+    setIctData: (d: any) => void;
+    confirmedSweeps: ConfirmedSweep[];
+    setConfirmedSweeps: (s: ConfirmedSweep[]) => void;
+
+    // —— HTF ——
+    htfCandles: Record<string, CandleData[]>;
+    setHtfCandles: (tf: string, candles: CandleData[]) => void;
+    addHtfCandle: (tf: string, candle: CandleData) => void;
+    htfBias: Record<string, HTFBias>;
+    setHtfBias: (tf: string, bias: HTFBias) => void;
+
     // WebSocket singleton
     send: (msg: any) => void;
     setSend: (fn: (msg: any) => void) => void;
@@ -304,6 +377,28 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             localStorage.setItem('terminus_multi_tf_cvd', JSON.stringify(updated));
             return { multiTfCvd: updated };
         }),
+
+    ictData: null,
+    setIctData: (d) => set({ ictData: d }),
+    confirmedSweeps: [],
+    setConfirmedSweeps: (s) => set({ confirmedSweeps: s }),
+
+    htfCandles: {},
+    setHtfCandles: (tf, candles) => set(s => ({
+        htfCandles: { ...s.htfCandles, [tf]: candles }
+    })),
+    addHtfCandle: (tf, candle) => set(s => {
+        const existing = s.htfCandles[tf] ?? [];
+        const last = existing[existing.length - 1];
+        const updated = last?.time === candle.time
+            ? [...existing.slice(0, -1), candle]
+            : [...existing, candle].slice(-500);
+        return { htfCandles: { ...s.htfCandles, [tf]: updated } };
+    }),
+    htfBias: {},
+    setHtfBias: (tf, bias) => set(s => ({
+        htfBias: { ...s.htfBias, [tf]: bias }
+    })),
 
     send: () => { },
     setSend: (fn) => set({ send: fn })

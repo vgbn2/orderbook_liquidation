@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { useDraggable } from '../hooks/useDraggable';
 import { useMarketStore } from '../stores/marketStore';
 import { runBacktest, BacktestResult } from '../lib/backtester';
+import { STRATEGY_PRESETS } from '../lib/strategyBuilder';
 import { EquityChart } from './EquityChart';
+import { DrawdownChart } from './backtest/DrawdownChart';
+import { parseCSVToTrades, calculateStatsFromTrades } from '../lib/tradeImporter';
 import { Button } from './UI';
 
 export type PanelMode = 'DOCKED_TOP' | 'DOCKED_BOTTOM' | 'FLOATING' | 'COLLAPSED';
@@ -29,22 +32,77 @@ export function FloatingBacktestPanel({ onClose }: Props) {
     const [configOpen, setConfigOpen] = useState(false);
     const [result, setResult] = useState<BacktestResult | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [backtestDays, setBacktestDays] = useState<number | 'all' | null>(null);
 
     const candles = useMarketStore(s => s.candles);
+    const timeframe = useMarketStore(s => s.timeframe);
+    const symbol = useMarketStore(s => s.symbol);
 
     const { elementRef, handleMouseDown, isDragging } = useDraggable({
         initialPosition: { x: window.innerWidth / 2 - 400, y: window.innerHeight - 300 }
     });
 
-    const handleRun = () => {
+    const handleRun = async () => {
         try {
             setError(null);
-            const res = runBacktest(candles, jsonInput);
+            const config = JSON.parse(jsonInput);
+            let dataToPass: any = candles;
+
+            let fetchLimit = 5000;
+            if (backtestDays === 'all') {
+                fetchLimit = 100000;
+            } else if (backtestDays !== null) {
+                const candlesPerDay: Record<string, number> = { '1m': 1440, '5m': 288, '15m': 96, '1h': 24, '4h': 6, '1d': 1, '1w': 1 / 7, '1M': 1 / 30 };
+                fetchLimit = Math.ceil((candlesPerDay[timeframe] || 1440) * backtestDays);
+            }
+
+            if (config.symbols && config.symbols.length > 0) {
+                const multiData: Record<string, any> = {};
+                for (const sym of config.symbols) {
+                    try {
+                        const res = await fetch(`/api/ohlcv?symbol=${sym}&interval=${timeframe}&limit=${fetchLimit}`);
+                        if (!res.ok) throw new Error(`Failed to fetch ${sym}`);
+                        multiData[sym] = await res.json();
+                    } catch (e) {
+                        console.error(`Error fetching ${sym}:`, e);
+                    }
+                }
+                dataToPass = multiData;
+            } else if (backtestDays !== null) {
+                try {
+                    const res = await fetch(`/api/ohlcv?symbol=${symbol}&interval=${timeframe}&limit=${fetchLimit}`);
+                    if (!res.ok) throw new Error(`Failed to fetch ${symbol}`);
+                    dataToPass = await res.json();
+                } catch (e) {
+                    console.error(`Error fetching ${symbol}:`, e);
+                }
+            }
+
+            const res = runBacktest(dataToPass, config);
             setResult(res);
             setConfigOpen(false);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (e: any) {
+            setError(e.message || 'Backtest Failed');
         }
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const text = ev.target?.result as string;
+                const trades = parseCSVToTrades(text);
+                const stats = calculateStatsFromTrades(trades);
+                setResult(stats);
+                setError(null);
+            } catch (err: any) {
+                setError('CSV Error: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
     };
 
     const jumpToTrade = (tradeIndex: number) => {
@@ -143,14 +201,24 @@ export function FloatingBacktestPanel({ onClose }: Props) {
                     >
                         CONFIG
                     </Button>
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={handleRun}
-                        style={{ fontSize: '10px', height: '24px' }}
-                    >
-                        RUN
-                    </Button>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <Button
+                            variant="primary"
+                            onClick={handleRun}
+                            style={{ flex: 1 }}
+                        >
+                            RUN ALGO
+                        </Button>
+                        <label style={{ flex: 1, display: 'flex' }}>
+                            <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileUpload} />
+                            <div
+                                className="terminus-button"
+                                style={{ width: '100%', textAlign: 'center', background: 'var(--bg-lighter)', color: 'var(--text-normal)', border: '1px solid var(--border-medium)', cursor: 'pointer', padding: '6px 12px', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                IMPORT CSV
+                            </div>
+                        </label>
+                    </div>
                     {error && <span style={{ color: 'var(--negative)', fontSize: '10px' }}>ERR: {error}</span>}
                 </div>
 
@@ -166,7 +234,41 @@ export function FloatingBacktestPanel({ onClose }: Props) {
 
             {/* ── SETTINGS PANE ── */}
             {configOpen && mode !== 'COLLAPSED' && (
-                <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-panel-dark, #07090d)' }}>
+                <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-panel-dark, #07090d)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <select
+                            className="terminus-input"
+                            onChange={e => {
+                                const preset = STRATEGY_PRESETS.find(p => p.name === e.target.value);
+                                if (preset) setJsonInput(JSON.stringify(preset.config, null, 2));
+                            }}
+                            style={{ flex: 1, fontSize: '11px', padding: '4px' }}
+                            defaultValue=""
+                        >
+                            <option value="" disabled>Load Strategy Preset...</option>
+                            {STRATEGY_PRESETS.map(p => (
+                                <option key={p.name} value={p.name}>{p.name}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            className="terminus-input"
+                            value={backtestDays === null ? "" : backtestDays}
+                            onChange={e => setBacktestDays(e.target.value === 'all' ? 'all' : (e.target.value ? Number(e.target.value) : null))}
+                            style={{ width: '120px', fontSize: '11px', padding: '4px' }}
+                        >
+                            <option value="">Current Chart</option>
+                            <option value="1">Last 1 Day</option>
+                            <option value="3">Last 3 Days</option>
+                            <option value="7">Last 7 Days</option>
+                            <option value="30">Last 30 Days</option>
+                            <option value="90">Last 90 Days</option>
+                            <option value="180">Last 180 Days</option>
+                            <option value="365">Last 365 Days</option>
+                            <option value="all">All Available</option>
+                        </select>
+                    </div>
+
                     <textarea
                         value={jsonInput}
                         onChange={e => setJsonInput(e.target.value)}
@@ -178,128 +280,125 @@ export function FloatingBacktestPanel({ onClose }: Props) {
                         }}
                     />
                 </div>
-            )}
+            )
+            }
 
             {/* ── RESULTS (Only if not collapsed) ── */}
-            {mode !== 'COLLAPSED' && result && (
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {/* Row 1: Ticker Strip of Trades */}
-                    <div style={{
-                        display: 'flex',
-                        overflowX: 'auto',
-                        padding: 'var(--space-2)',
-                        gap: 'var(--space-2)',
-                        background: 'rgba(0,0,0,0.1)',
-                        borderBottom: '1px solid var(--border-color)',
-                        scrollbarWidth: 'none'
-                    }}>
-                        {result.trades.map((t, i) => (
-                            <button
-                                key={i}
-                                onClick={() => jumpToTrade(i)}
-                                style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    padding: '4px 8px',
-                                    background: 'rgba(255,255,255,0.03)',
-                                    border: `1px solid ${t.pnl >= 0 ? 'var(--up-alpha)' : 'var(--down-alpha)'}`,
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    minWidth: '80px',
-                                    transition: 'background 0.2s',
-                                    textAlign: 'left'
-                                }}
-                            >
-                                <span className="terminus-label" style={{ fontSize: '9px' }}>#{i + 1} {t.type}</span>
-                                <span className="terminus-value" style={{ fontSize: '11px', color: t.pnl >= 0 ? 'var(--positive)' : 'var(--negative)' }}>
-                                    {t.pnl >= 0 ? '+' : ''}{t.pnlPct.toFixed(2)}%
+            {
+                mode !== 'COLLAPSED' && result && (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        {/* Row 1: Ticker Strip of Trades */}
+                        <div style={{
+                            display: 'flex',
+                            overflowX: 'auto',
+                            padding: 'var(--space-2)',
+                            gap: 'var(--space-2)',
+                            background: 'rgba(0,0,0,0.1)',
+                            borderBottom: '1px solid var(--border-color)',
+                            scrollbarWidth: 'none'
+                        }}>
+                            {result.trades.map((t, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => jumpToTrade(i)}
+                                    style={{
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        padding: '4px 8px',
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: `1px solid ${t.pnl >= 0 ? 'var(--up-alpha)' : 'var(--down-alpha)'}`,
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        minWidth: '80px',
+                                        transition: 'background 0.2s',
+                                        textAlign: 'left'
+                                    }}
+                                >
+                                    <span className="terminus-label" style={{ fontSize: '9px' }}>#{i + 1} {t.type}</span>
+                                    <span className="terminus-value" style={{ fontSize: '11px', color: t.pnl >= 0 ? 'var(--positive)' : 'var(--negative)' }}>
+                                        {t.pnl >= 0 ? '+' : ''}{t.pnlPct.toFixed(2)}%
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Row 2: Stats Summary */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: 'var(--space-3) var(--space-4)',
+                            gap: 'var(--space-4)',
+                            borderBottom: '1px solid var(--border-color)'
+                        }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span className="terminus-label" style={{ fontSize: '9px' }}>NET RETURN</span>
+                                <span className="terminus-value" style={{ fontSize: '13px', color: result.netReturnPct >= 0 ? 'var(--positive)' : 'var(--negative)' }}>
+                                    {result.netReturnPct >= 0 ? '+' : ''}{result.netReturnPct.toFixed(2)}%
                                 </span>
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Row 2: Stats Summary */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: 'var(--space-3) var(--space-4)',
-                        gap: 'var(--space-4)',
-                        borderBottom: '1px solid var(--border-color)'
-                    }}>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span className="terminus-label" style={{ fontSize: '9px' }}>NET RETURN</span>
-                            <span className="terminus-value" style={{ fontSize: '13px', color: result.netReturnPct >= 0 ? 'var(--positive)' : 'var(--negative)' }}>
-                                {result.netReturnPct >= 0 ? '+' : ''}{result.netReturnPct.toFixed(2)}%
-                            </span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span className="terminus-label" style={{ fontSize: '9px' }}>VS B&H</span>
-                            <span className="terminus-value" style={{ fontSize: '13px', color: (result.netReturnPct - result.bahReturnPct) >= 0 ? 'var(--positive)' : 'var(--negative)' }}>
-                                {(result.netReturnPct - result.bahReturnPct) >= 0 ? '+' : ''}{(result.netReturnPct - result.bahReturnPct).toFixed(2)}%
-                            </span>
-                        </div>
-                        <div style={{ width: '1px', height: '24px', background: 'var(--border-color)' }} />
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span className="terminus-label" style={{ fontSize: '9px' }}>SHARPE</span>
-                            <span className="terminus-value" style={{ fontSize: '13px' }}>{result.sharpeRatio.toFixed(2)}</span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span className="terminus-label" style={{ fontSize: '9px' }}>MAX DD</span>
-                            <span className="terminus-value" style={{ fontSize: '13px', color: 'var(--negative)' }}>{result.maxDrawdown.toFixed(2)}%</span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span className="terminus-label" style={{ fontSize: '9px' }}>TRADES</span>
-                            <span className="terminus-value" style={{ fontSize: '13px' }}>{result.totalTrades}</span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span className="terminus-label" style={{ fontSize: '9px' }}>WIN RATE</span>
-                            <span className="terminus-value" style={{ fontSize: '13px' }}>{result.winRate.toFixed(1)}%</span>
-                        </div>
-                    </div>
-
-                    {/* Analytics Row: Heatmap & Drawdown */}
-                    <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-panel-dark)' }}>
-                        <div style={{ flex: 1, padding: 'var(--space-4)', borderRight: '1px solid var(--border-color)' }}>
-                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px' }}>MONTHLY RETURNS</div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
-                                {result.monthlyReturns.map((m, i) => {
-                                    const isPos = m.returnPct >= 0;
-                                    const intensity = Math.min(Math.abs(m.returnPct) / 10, 1) * 0.8 + 0.2;
-                                    return (
-                                        <div key={i} title={`${m.year}-${m.month + 1}: ${m.returnPct.toFixed(2)}%`} style={{
-                                            width: '24px', height: '24px',
-                                            background: isPos ? `rgba(0, 255, 200, ${intensity})` : `rgba(255, 59, 92, ${intensity})`,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: '8px', color: '#fff', borderRadius: '2px'
-                                        }}>
-                                            {m.returnPct.toFixed(0)}%
-                                        </div>
-                                    );
-                                })}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span className="terminus-label" style={{ fontSize: '9px' }}>VS B&H</span>
+                                <span className="terminus-value" style={{ fontSize: '13px', color: (result.netReturnPct - result.bahReturnPct) >= 0 ? 'var(--positive)' : 'var(--negative)' }}>
+                                    {(result.netReturnPct - result.bahReturnPct) >= 0 ? '+' : ''}{(result.netReturnPct - result.bahReturnPct).toFixed(2)}%
+                                </span>
+                            </div>
+                            <div style={{ width: '1px', height: '24px', background: 'var(--border-color)' }} />
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span className="terminus-label" style={{ fontSize: '9px' }}>SHARPE</span>
+                                <span className="terminus-value" style={{ fontSize: '13px' }}>{result.sharpeRatio.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span className="terminus-label" style={{ fontSize: '9px' }}>MAX DD</span>
+                                <span className="terminus-value" style={{ fontSize: '13px', color: 'var(--negative)' }}>{result.maxDrawdown.toFixed(2)}%</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span className="terminus-label" style={{ fontSize: '9px' }}>TRADES</span>
+                                <span className="terminus-value" style={{ fontSize: '13px' }}>{result.totalTrades}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span className="terminus-label" style={{ fontSize: '9px' }}>WIN RATE</span>
+                                <span className="terminus-value" style={{ fontSize: '13px' }}>{result.winRate.toFixed(1)}%</span>
                             </div>
                         </div>
 
-                        <div style={{ flex: 1, padding: 'var(--space-4)' }}>
-                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px' }}>DRAWDOWN PROFILE</div>
-                            <div style={{ display: 'flex', alignItems: 'flex-end', height: '32px', gap: '1px' }}>
-                                {result.drawdownCurve.filter((_, i) => i % Math.max(1, Math.floor(result.drawdownCurve.length / 100)) === 0).map((d, i) => (
-                                    <div key={i} style={{
-                                        flex: 1, background: 'var(--negative)',
-                                        height: `${Math.min((d.value / Math.max(1, result.maxDrawdown)) * 100, 100)}%`,
-                                        opacity: 0.8
-                                    }} />
-                                ))}
+                        {/* Analytics Row: Heatmap & Drawdown */}
+                        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-panel-dark)' }}>
+                            <div style={{ flex: 1, padding: 'var(--space-4)', borderRight: '1px solid var(--border-color)' }}>
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px' }}>MONTHLY RETURNS</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                                    {result.monthlyReturns.map((m, i) => {
+                                        const isPos = m.returnPct >= 0;
+                                        const intensity = Math.min(Math.abs(m.returnPct) / 10, 1) * 0.8 + 0.2;
+                                        return (
+                                            <div key={i} title={`${m.year}-${m.month + 1}: ${m.returnPct.toFixed(2)}%`} style={{
+                                                width: '24px', height: '24px',
+                                                background: isPos ? `rgba(0, 255, 200, ${intensity})` : `rgba(255, 59, 92, ${intensity})`,
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: '8px', color: '#fff', borderRadius: '2px'
+                                            }}>
+                                                {m.returnPct.toFixed(0)}%
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div style={{ flex: 1, padding: 'var(--space-4)' }}>
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px' }}>DRAWDOWN PROFILE</div>
+                                <div style={{ width: '100%', height: '32px' }}>
+                                    <DrawdownChart data={result.drawdownCurve} />
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Equity Curve Overlay */}
-                    <div style={{ padding: 'var(--space-4)' }}>
-                        <EquityChart result={result} height={140} />
+                        {/* Equity Curve Overlay */}
+                        <div style={{ padding: 'var(--space-4)' }}>
+                            <EquityChart result={result} height={140} />
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
 

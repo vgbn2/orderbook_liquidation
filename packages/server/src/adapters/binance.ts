@@ -5,6 +5,7 @@ import { redis } from '../db/redis.js';
 import { clientHub } from '../ws/client-hub.js';
 import { orderbookEngine } from '../engines/orderbook.js';
 import { amdDetector } from '../engines/amd.js';
+import { ictEngine } from '../engines/ict.js';
 import type { Candle, ExchangeAdapter, Exchange } from './types.js';
 
 // ══════════════════════════════════════════════════════════════
@@ -182,6 +183,9 @@ export class BinanceAdapter implements ExchangeAdapter {
         // Persist closed candles to TimescaleDB
         const PERSIST_INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
         if (k.x && PERSIST_INTERVALS.includes(interval)) {
+            // Feed ICT Engine on candle close
+            ictEngine.onCandle(candle);
+
             // Feed AMD Reversal Detector on candle close (only for 1m)
             if (interval === '1m') amdDetector.onCandle(candle);
 

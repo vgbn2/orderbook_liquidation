@@ -16,6 +16,7 @@ import { ToastContainer, NotifMutedBadge } from './components/Toast';
 import { Orderbook } from './components/Orderbook';
 import { BacktestPage } from './components/BacktestPage';
 import { ExchangePage } from './components/ExchangePage';
+import { HTFBiasMonitor } from './components/HTFBiasMonitor';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSettingsStore } from './stores/settingsStore';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -105,6 +106,23 @@ export function App() {
         return () => window.removeEventListener('keydown', handler);
     }, [currentView, setView]);
 
+    // Alert listener
+    useEffect(() => {
+        const handler = () => setShowAlertPanel(true);
+        window.addEventListener('TERMINUS_SHOW_ALERTS', handler);
+        return () => window.removeEventListener('TERMINUS_SHOW_ALERTS', handler);
+    }, []);
+
+    // Symbol switch confirmation listener
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const { symbol: confirmedSym } = (e as CustomEvent).detail;
+            fetchHistorical(timeframe, confirmedSym);
+        };
+        window.addEventListener('terminus_symbol_confirmed', handler);
+        return () => window.removeEventListener('terminus_symbol_confirmed', handler);
+    }, [timeframe, fetchHistorical]);
+
     // Timeout fallback for loading
     useEffect(() => {
         if (candles.length > 0) setLoading(false);
@@ -116,11 +134,6 @@ export function App() {
         <div className="app-layout" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
             {/* ── TOP NAV ────────────────────────────────────────── */}
             <TerminusNav />
-
-            {/* ── WATCHLIST TICKER (Placeholder for now) ─────────── */}
-            <div id="ticker" style={{ height: 'var(--h-ticker)', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
-                {/*  We will implement Watchlist contents here later */}
-            </div>
 
             {/* ── TOOLBAR ──────────────────── */}
             {currentView === 'chart' && (
@@ -210,6 +223,7 @@ export function App() {
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                             {sidebarTab === 'macro' ? (
                                 <>
+                                    <HTFBiasMonitor />
                                     <QuantPanel />
                                     <LiquidationPanel />
                                     <VWAFPanel />

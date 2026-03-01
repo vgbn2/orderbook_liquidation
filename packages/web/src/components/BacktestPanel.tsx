@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useMarketStore } from '../stores/marketStore';
+import { useMarketStore, CandleData } from '../stores/marketStore';
 import { runBacktest, BacktestResult } from '../lib/backtester';
+import { STRATEGY_PRESETS } from '../lib/strategyBuilder';
 import { EquityChart } from './EquityChart';
+import { parseCSVToTrades, calculateStatsFromTrades } from '../lib/tradeImporter';
 import { Button, PanelSection, StatCard } from './UI';
 
 const DEFAULT_STRATEGY = `{
@@ -16,7 +18,9 @@ const DEFAULT_STRATEGY = `{
   ],
   "entryFeePct": 0.05,
   "exitFeePct": 0.05,
-  "holdingFeePct": 0.001
+  "holdingFeePct": 0.001,
+  "minDrawdownThresholdPct": 0.5,
+  "slippagePct": 0.1
 }`; interface Props {
     onResult?: (result: BacktestResult | null) => void;
 }
@@ -29,6 +33,7 @@ export function BacktestPanel({ onResult }: Props = {}) {
     });
     const [result, setResult] = useState<BacktestResult | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [backtestDays, setBacktestDays] = useState<number | 'all' | null>(null);
 
     // Save configuration to localStorage
     useEffect(() => {
@@ -36,6 +41,7 @@ export function BacktestPanel({ onResult }: Props = {}) {
     }, [jsonInput]);
 
     const timeframe = useMarketStore(s => s.timeframe);
+    const symbol = useMarketStore(s => s.symbol);
     const setTimeframe = useMarketStore(s => s.setTimeframe);
 
     const TIMEFRAMES = [
@@ -49,18 +55,73 @@ export function BacktestPanel({ onResult }: Props = {}) {
         { value: "1M", label: "1M" },
     ];
 
-    const handleRun = () => {
+    const handleRun = async () => {
         try {
             setError(null);
-            const res = runBacktest(candles, jsonInput);
+            const config = JSON.parse(jsonInput);
+
+            let dataToPass: CandleData[] | Record<string, CandleData[]> = candles;
+
+            let fetchLimit = 5000;
+            if (backtestDays === 'all') {
+                fetchLimit = 100000;
+            } else if (backtestDays !== null) {
+                const candlesPerDay: Record<string, number> = { '1m': 1440, '5m': 288, '15m': 96, '1h': 24, '4h': 6, '1d': 1, '1w': 1 / 7, '1M': 1 / 30 };
+                fetchLimit = Math.ceil((candlesPerDay[timeframe] || 1440) * backtestDays);
+            }
+
+            // If portfolio mode (multi-symbol)
+            if (config.symbols && config.symbols.length > 0) {
+                const multiData: Record<string, CandleData[]> = {};
+                for (const sym of config.symbols) {
+                    try {
+                        const res = await fetch(`/api/ohlcv?symbol=${sym}&interval=${timeframe}&limit=${fetchLimit}`);
+                        if (!res.ok) throw new Error(`Failed to fetch ${sym}`);
+                        multiData[sym] = await res.json();
+                    } catch (e) {
+                        console.error(`Error fetching ${sym}:`, e);
+                    }
+                }
+                dataToPass = multiData;
+            } else if (backtestDays !== null) {
+                // Fetch specific days for current symbol instead of using limited store candles
+                try {
+                    const res = await fetch(`/api/ohlcv?symbol=${symbol}&interval=${timeframe}&limit=${fetchLimit}`);
+                    if (!res.ok) throw new Error(`Failed to fetch ${symbol}`);
+                    dataToPass = await res.json();
+                } catch (e) {
+                    console.error(`Error fetching ${symbol}:`, e);
+                }
+            }
+
+            const res = runBacktest(dataToPass, config);
             setResult(res);
             if (onResult) onResult(res);
 
-            // Dispatch event to show trades on chart
+            // Dispatch event to show trades on chart (only for active symbol trades if many)
             window.dispatchEvent(new CustomEvent('backtest_results', { detail: res }));
-        } catch (err: any) {
-            setError(err.message);
+        } catch (e: any) {
+            setError(e.message || 'Backtest Failed');
         }
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const text = ev.target?.result as string;
+                const trades = parseCSVToTrades(text);
+                const stats = calculateStatsFromTrades(trades);
+                setResult(stats);
+                setError(null);
+            } catch (err: any) {
+                setError('CSV Error: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
     };
 
     return (
@@ -79,6 +140,40 @@ export function BacktestPanel({ onResult }: Props = {}) {
                     ))}
                 </div>
 
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <select
+                        className="terminus-input"
+                        onChange={e => {
+                            const preset = STRATEGY_PRESETS.find(p => p.name === e.target.value);
+                            if (preset) setJsonInput(JSON.stringify(preset.config, null, 2));
+                        }}
+                        style={{ flex: 1, fontSize: '11px', padding: '4px' }}
+                        defaultValue=""
+                    >
+                        <option value="" disabled>Load Strategy Preset...</option>
+                        {STRATEGY_PRESETS.map(p => (
+                            <option key={p.name} value={p.name}>{p.name}</option>
+                        ))}
+                    </select>
+
+                    <select
+                        className="terminus-input"
+                        value={backtestDays === null ? "" : backtestDays}
+                        onChange={e => setBacktestDays(e.target.value === 'all' ? 'all' : (e.target.value ? Number(e.target.value) : null))}
+                        style={{ width: '120px', fontSize: '11px', padding: '4px' }}
+                    >
+                        <option value="">Current Chart</option>
+                        <option value="1">Last 1 Day</option>
+                        <option value="3">Last 3 Days</option>
+                        <option value="7">Last 7 Days</option>
+                        <option value="30">Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                        <option value="180">Last 180 Days</option>
+                        <option value="365">Last 365 Days</option>
+                        <option value="all">All Available</option>
+                    </select>
+                </div>
+
                 <textarea
                     value={jsonInput}
                     onChange={e => setJsonInput(e.target.value)}
@@ -90,13 +185,25 @@ export function BacktestPanel({ onResult }: Props = {}) {
                     }}
                 />
 
-                <Button
-                    variant="primary"
-                    onClick={handleRun}
-                    style={{ width: '100%' }}
-                >
-                    RUN BACKTEST
-                </Button>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <Button
+                        variant="primary"
+                        onClick={handleRun}
+                        style={{ flex: 1 }}
+                    >
+                        RUN BACKTEST
+                    </Button>
+                    <label style={{ flex: 1, display: 'flex' }}>
+                        <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileUpload} />
+                        <div
+                            className="terminus-button"
+                            style={{ width: '100%', textAlign: 'center', background: 'var(--bg-lighter)', color: 'var(--text-normal)', border: '1px solid var(--border-medium)', cursor: 'pointer', padding: '6px 12px', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Import trades from a CSV file"
+                        >
+                            IMPORT CSV
+                        </div>
+                    </label>
+                </div>
 
                 {error && (
                     <div style={{
@@ -194,7 +301,7 @@ export function BacktestPanel({ onResult }: Props = {}) {
                     </div>
                 )}
             </div>
-        </PanelSection>
+        </PanelSection >
     );
 }
 

@@ -11,6 +11,10 @@ import type {
 } from 'lightweight-charts';
 import { useMarketStore } from '../stores/marketStore';
 import { PerfStats } from './PerfStats';
+import { ICTChartOverlay } from './ICTChartOverlay';
+import { computeVRVP } from '../lib/vrvp';
+
+const CHART_RIGHT_OFFSET = 12;
 
 
 // ═══════════════════════════════════════════════════
@@ -64,7 +68,7 @@ type Drawing = LineDrawing | HLineDrawing | BoxDrawing | FibDrawing | RayDrawing
 //  Indicator Types
 // ═══════════════════════════════════════════════════
 
-export type IndicatorKey = 'volume' | 'cvd' | 'cvd_htf' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq' | 'liq_clusters' | 'funding_rate' | 'open_interest' | 'session_boxes' | 'log_scale' | 'vol_profile' | 'line_chart';
+export type IndicatorKey = 'volume' | 'cvd' | 'cvd_htf' | 'delta' | 'vwap' | 'liq_overlay' | 'rsi' | 'macd' | 'resting_liq' | 'liq_clusters' | 'funding_rate' | 'open_interest' | 'session_boxes' | 'log_scale' | 'vol_profile' | 'line_chart' | 'ict_fvg' | 'ict_ob' | 'ict_sweeps';
 
 // ═══════════════════════════════════════════════════
 //  TF-Relevance Gating
@@ -88,6 +92,9 @@ export const INDICATOR_RELEVANCE: Record<IndicatorKey, string[]> = {
     log_scale: ALL_TFS,
     vol_profile: ALL_TFS,
     line_chart: ALL_TFS,
+    ict_fvg: ALL_TFS,
+    ict_ob: ALL_TFS,
+    ict_sweeps: ALL_TFS,
 };
 
 interface ChartProps {
@@ -136,6 +143,7 @@ export function Chart({
     const fundingRates = useMarketStore((s) => s.fundingRates);
     const openInterest = useMarketStore((s) => s.openInterest);
     const timeframe = useMarketStore((s) => s.timeframe);
+    const symbol = useMarketStore((s) => s.symbol);
 
     const drawingState = useRef<{
         started: boolean;
@@ -147,6 +155,7 @@ export function Chart({
 
     const userHasScrolledRef = useRef(false);
     const initialScrollDoneRef = useRef(false);
+    const candlesLengthRef = useRef(0);
 
     const rafRef = useRef<number | null>(null);
     const needsRedrawRef = useRef(false);
@@ -195,6 +204,7 @@ export function Chart({
                 borderColor: '#1c1c2e',
                 timeVisible: true,
                 secondsVisible: true,
+                rightOffset: CHART_RIGHT_OFFSET,
             },
             rightPriceScale: {
                 borderColor: '#1c1c2e',
@@ -357,7 +367,18 @@ export function Chart({
         });
         resizeObserver.observe(containerRef.current);
 
+        const handleLogicalRange = (logicalRange: any) => {
+            if (!logicalRange) return;
+            const totalBars = candlesLengthRef.current;
+            if (totalBars === 0) return;
+            const liveEdge = totalBars + CHART_RIGHT_OFFSET;
+            const isAtLiveEdge = Math.abs(logicalRange.to - liveEdge) < 4;
+            userHasScrolledRef.current = !isAtLiveEdge;
+        };
+        chart.timeScale().subscribeVisibleLogicalRangeChange(handleLogicalRange);
+
         return () => {
+            chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleLogicalRange);
             resizeObserver.disconnect();
             chart.remove();
             chartRef.current = null;
@@ -425,6 +446,25 @@ export function Chart({
         macdHistRef.current?.applyOptions({ visible: isVisible('macd') });
     }, [activeIndicators, timeframe]);
 
+    // ── Symbol Change Reset ────────────────────
+    useEffect(() => {
+        initialScrollDoneRef.current = false;
+        userHasScrolledRef.current = false;
+
+        candleSeriesRef.current?.setData([]);
+        lineSeriesRef.current?.setData([]);
+        volumeSeriesRef.current?.setData([]);
+        cvdSeriesRef.current?.setData([]);
+        deltaSeriesRef.current?.setData([]);
+        vwapSeriesRef.current?.setData([]);
+        rsiSeriesRef.current?.setData([]);
+        macdLineRef.current?.setData([]);
+        macdSignalRef.current?.setData([]);
+        macdHistRef.current?.setData([]);
+        fundingSeriesRef.current?.setData([]);
+        oiSeriesRef.current?.setData([]);
+    }, [symbol]);
+
     // ── Update data ────────────────────────────
     useEffect(() => {
         if (!candleSeriesRef.current || !volumeSeriesRef.current || candles.length === 0)
@@ -452,6 +492,7 @@ export function Chart({
         candleSeriesRef.current.setData(candleData);
         lineSeriesRef.current?.setData(lineData);
         volumeSeriesRef.current.setData(volumeData);
+        candlesLengthRef.current = candleData.length;
 
         // ── Compute CVD (Cumulative Volume Delta) ──
         if (cvdSeriesRef.current) {
@@ -510,10 +551,13 @@ export function Chart({
         if (chartRef.current) {
             const isFirstLoad = candles.length > 0 && !initialScrollDoneRef.current;
             if (isFirstLoad) {
-                chartRef.current.timeScale().scrollToPosition(2, false);
+                chartRef.current.timeScale().fitContent();
+                setTimeout(() => {
+                    chartRef.current?.timeScale().scrollToPosition(CHART_RIGHT_OFFSET, false);
+                }, 0);
                 initialScrollDoneRef.current = true;
             } else if (!userHasScrolledRef.current) {
-                chartRef.current.timeScale().scrollToPosition(2, false);
+                chartRef.current.timeScale().scrollToPosition(CHART_RIGHT_OFFSET, false);
             }
         }
 
@@ -1171,6 +1215,59 @@ export function Chart({
             }
         }
 
+        // ── Volume Profile (VRVP) overlay ───────────
+        if (activeIndicators.has('vol_profile') && candleSeriesRef.current) {
+            const range = ts.getVisibleLogicalRange();
+            if (range && candles.length > 0) {
+                const fromIdx = Math.max(0, Math.floor(range.from));
+                const toIdx = Math.min(candles.length - 1, Math.ceil(range.to));
+                const visibleCandles = candles.slice(fromIdx, toIdx + 1);
+
+                const profile = computeVRVP(visibleCandles, 50);
+                if (profile) {
+                    const firstRow = profile.rows[0];
+                    const yHigh = candleSeriesRef.current.priceToCoordinate(firstRow.priceHigh);
+                    const yLow = candleSeriesRef.current.priceToCoordinate(firstRow.priceLow);
+
+                    if (yHigh !== null && yLow !== null) {
+                        const rowHeight = Math.abs(yHigh - yLow);
+                        const maxBarWidth = cw * 0.2; // 20% of chart width
+
+                        for (const row of profile.rows) {
+                            const y = candleSeriesRef.current.priceToCoordinate(row.priceMid);
+                            if (y == null) continue;
+
+                            const width = (row.volume / profile.maxVolume) * maxBarWidth;
+                            const rx = cw - width - 50; // Align to right-ish before price scale
+
+                            // Row background
+                            ctx.fillStyle = row.isPOC ? 'rgba(255, 235, 59, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+                            if (row.priceMid >= profile.val && row.priceMid <= profile.vah) {
+                                ctx.fillStyle = row.isPOC ? 'rgba(255, 235, 59, 0.3)' : 'rgba(255, 255, 255, 0.1)';
+                            }
+                            ctx.fillRect(rx, y - rowHeight / 2, width, rowHeight - 1);
+
+                            // Buy/Sell delta in row
+                            const buyWidth = (row.buyVolume / row.volume) * width;
+                            ctx.fillStyle = 'rgba(0, 255, 136, 0.3)';
+                            ctx.fillRect(rx, y - rowHeight / 2, buyWidth, rowHeight - 1);
+                        }
+
+                        // Draw POC line
+                        const pocY = candleSeriesRef.current.priceToCoordinate(profile.poc);
+                        if (pocY != null) {
+                            ctx.strokeStyle = '#ffcc00';
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(cw - maxBarWidth - 60, pocY);
+                            ctx.lineTo(cw, pocY);
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+        }
+
         ctx.restore();
     }, [drawings, candles, selectedDrawing, activeIndicators, timeframe, liquidations]);
 
@@ -1238,6 +1335,18 @@ export function Chart({
                         zIndex: 10
                     }}
                 />
+
+                {/* ── ICT SVG Overlay ────────────────── */}
+                {candleSeriesRef.current && chartRef.current && (
+                    <ICTChartOverlay
+                        visibleFVGs={activeIndicators.has('ict_fvg')}
+                        visibleOBs={activeIndicators.has('ict_ob')}
+                        visibleSweeps={activeIndicators.has('ict_sweeps')}
+                        yScale={(v) => candleSeriesRef.current!.priceToCoordinate(v) ?? 0}
+                        xScale={(t) => chartRef.current!.timeScale().timeToCoordinate(t as Time) ?? 0}
+                        chartWidth={canvasRef.current?.width ? canvasRef.current.width / window.devicePixelRatio : 0}
+                    />
+                )}
 
                 {/* ── Drawing Settings Modal ──────────── */}
                 {selectedDraw && (
