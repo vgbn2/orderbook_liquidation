@@ -6,6 +6,7 @@ import { clientHub } from '../ws/client-hub.js';
 import { orderbookEngine } from '../engines/orderbook.js';
 import { amdDetector } from '../engines/amd.js';
 import { ictEngine } from '../engines/ict.js';
+import { tradeBatcher } from '../db/TradeBatcher.js';
 import type { Candle, ExchangeAdapter, Exchange } from './types.js';
 
 // ══════════════════════════════════════════════════════════════
@@ -429,20 +430,16 @@ export class BinanceAdapter implements ExchangeAdapter {
                             time: msg.E,
                             price: parseFloat(msg.p),
                             qty: parseFloat(msg.q),
-                            side: msg.m ? 'sell' : 'buy', // m: true means buyer is market maker -> sell
+                            side: (msg.m ? 'sell' : 'buy') as 'sell' | 'buy', // m: true means buyer is market maker -> sell
                             exchange: 'binance',
                             symbol: this.symbol.toUpperCase()
                         };
 
-                        // Batch trades instead of broadcasting immediately
+                        // Batch trades to be broadcasted to UI
                         this.tradeBatch.push(trade);
 
-                        // Persist to TimescaleDB for Replay
-                        query(`
-                            INSERT INTO big_trades (time, exchange, symbol, price, qty, side)
-                            VALUES (TO_TIMESTAMP($1 / 1000.0), $2, $3, $4, $5, $6)
-                        `, [trade.time, trade.exchange, trade.symbol, trade.price, trade.qty, trade.side])
-                            .catch(err => logger.error({ err }, 'Failed to persist big trade'));
+                        // Fix 2: Queue Database Inserts to prevent Connection Pool exhaustion
+                        tradeBatcher.add(trade);
                     }
                 } catch (err) {
                     logger.error({ err }, 'Binance trades parse error');

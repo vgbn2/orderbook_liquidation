@@ -13,10 +13,38 @@ export function useWebSocket() {
     const lastFreqUpdate = useRef(performance.now());
     const lastDelayUpdate = useRef(performance.now());
 
-    // Batching state
+    // Batching & Throttling setup (Fix 3)
     const reqFrameRef = useRef<number | null>(null);
     const pendingMessages = useRef<any[]>([]);
     const activeCandleTopic = useRef<string | null>(null);
+
+    const pendingOrderbook = useRef<any>(null);
+    const pendingLiquidations = useRef<any>(null);
+    const pendingConfluence = useRef<any>(null);
+    const pendingQuant = useRef<any>(null);
+
+    useEffect(() => {
+        // 15 FPS Throttle
+        const flushInterval = setInterval(() => {
+            if (pendingOrderbook.current) {
+                useMarketStore.getState().setOrderbook(pendingOrderbook.current);
+                pendingOrderbook.current = null;
+            }
+            if (pendingLiquidations.current) {
+                useMarketStore.getState().setLiquidations(pendingLiquidations.current);
+                pendingLiquidations.current = null;
+            }
+            if (pendingConfluence.current) {
+                useMarketStore.getState().setConfluenceZones(pendingConfluence.current);
+                pendingConfluence.current = null;
+            }
+            if (pendingQuant.current) {
+                useMarketStore.getState().setQuantSnapshot(pendingQuant.current);
+                pendingQuant.current = null;
+            }
+        }, 66);
+        return () => clearInterval(flushInterval);
+    }, []);
 
     const {
         symbol, setSymbol, timeframe,
@@ -31,97 +59,108 @@ export function useWebSocket() {
 
     const handleRef = useRef<any>(null);
 
-    const connect = useCallback(() => {
-        // Use relative URL — Vite proxy handles routing to backend
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${protocol}//${window.location.host}/ws`;
+    const connect = useCallback(async () => {
+        // Fetch JWT Token First (Fix 5)
+        try {
+            const tokenRes = await fetch('/api/token', { method: 'POST' });
+            if (!tokenRes.ok) throw new Error('Failed to fetch auth token');
 
-        const ws = new WebSocket(url);
-        wsRef.current = ws;
+            const { token } = await tokenRes.json();
 
-        if (!workerRef.current) {
-            workerRef.current = createWorker();
-            workerRef.current.onmessage = (e) => {
-                if (e.data.type === 'PARSED_MESSAGE' && handleRef.current) {
-                    handleRef.current(e.data.payload);
+            // Use relative URL — Vite proxy handles routing to backend
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const url = `${protocol}//${window.location.host}/ws?token=${token}`;
+
+            const ws = new WebSocket(url);
+            wsRef.current = ws;
+
+            if (!workerRef.current) {
+                workerRef.current = createWorker();
+                workerRef.current.onmessage = (e) => {
+                    if (e.data.type === 'PARSED_MESSAGE' && handleRef.current) {
+                        handleRef.current(e.data.payload);
+                    }
+                };
+            }
+
+            ws.onopen = () => {
+                setConnected(true);
+                reconnectAttempts.current = 0;
+
+                // Register send function in store so any component can use it
+                setSend((msg: any) => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify(msg));
+                    } else {
+                        // Queue for reconnect
+                        pendingMessages.current.push(msg);
+                    }
+                });
+
+                // Flush any queued messages
+                while (pendingMessages.current.length > 0) {
+                    ws.send(JSON.stringify(pendingMessages.current.shift()));
+                }
+
+                const initialTopic = `candles.binance.${symbol.toUpperCase()}.${timeframe}`;
+                activeCandleTopic.current = initialTopic;
+
+                // Subscribe to all data topics
+                ws.send(JSON.stringify({
+                    action: 'subscribe',
+                    topics: [
+                        initialTopic,
+                        'orderbook.aggregated',
+                        'options.analytics',
+                        'liquidations',
+                        'vwaf',
+                        'confluence',
+                        'trades',
+                        'alerts',
+                        'quant.analytics',
+                        'ict.data',
+                        'ict.sweep_confirmed',
+                        `candles.binance.${symbol.toUpperCase()}.4h`,
+                        `candles.binance.${symbol.toUpperCase()}.1d`,
+                    ],
+                }));
+            };
+
+            ws.onmessage = (event) => {
+                msgCount.current++;
+                const now = performance.now();
+                if (now - lastFreqUpdate.current > 1000) {
+                    setMetrics({ msgPressure: msgCount.current });
+                    msgCount.current = 0;
+                    lastFreqUpdate.current = now;
+                }
+
+                // Offload to Web Worker using Transferable Objects (Fix 4: GC Pauses)
+                if (workerRef.current) {
+                    // Convert string to ArrayBuffer to transfer ownership (Zero-copy to worker)
+                    const encoder = new TextEncoder();
+                    const buffer = encoder.encode(event.data).buffer;
+
+                    workerRef.current.postMessage({
+                        type: 'WS_MESSAGE',
+                        payload: buffer
+                    }, [buffer]); // <-- Transferable array
                 }
             };
-        }
 
-        ws.onopen = () => {
-            setConnected(true);
-            reconnectAttempts.current = 0;
+            ws.onclose = () => {
+                setSend(() => { }); // clear send while disconnected
+                setConnected(false);
+                scheduleReconnect();
+            };
 
-            // Register send function in store so any component can use it
-            setSend((msg: any) => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify(msg));
-                } else {
-                    // Queue for reconnect
-                    pendingMessages.current.push(msg);
-                }
-            });
-
-            // Flush any queued messages
-            while (pendingMessages.current.length > 0) {
-                ws.send(JSON.stringify(pendingMessages.current.shift()));
-            }
-
-            const initialTopic = `candles.binance.${symbol.toUpperCase()}.${timeframe}`;
-            activeCandleTopic.current = initialTopic;
-
-            // Subscribe to all data topics
-            ws.send(JSON.stringify({
-                action: 'subscribe',
-                topics: [
-                    initialTopic,
-                    'orderbook.aggregated',
-                    'options.analytics',
-                    'liquidations',
-                    'vwaf',
-                    'confluence',
-                    'trades',
-                    'alerts',
-                    'quant.analytics',
-                    'ict.data',
-                    'ict.sweep_confirmed',
-                    `candles.binance.${symbol.toUpperCase()}.4h`,
-                    `candles.binance.${symbol.toUpperCase()}.1d`,
-                ],
-            }));
-        };
-
-        ws.onmessage = (event) => {
-            msgCount.current++;
-            const now = performance.now();
-            if (now - lastFreqUpdate.current > 1000) {
-                setMetrics({ msgPressure: msgCount.current });
-                msgCount.current = 0;
-                lastFreqUpdate.current = now;
-            }
-
-            // Offload to Web Worker using Transferable Objects (Fix 4: GC Pauses)
-            if (workerRef.current) {
-                // Convert string to ArrayBuffer to transfer ownership (Zero-copy to worker)
-                const encoder = new TextEncoder();
-                const buffer = encoder.encode(event.data).buffer;
-
-                workerRef.current.postMessage({
-                    type: 'WS_MESSAGE',
-                    payload: buffer
-                }, [buffer]); // <-- Transferable array
-            }
-        };
-
-        ws.onclose = () => {
-            setSend(() => { }); // clear send while disconnected
-            setConnected(false);
+            ws.onerror = () => {
+                ws.close();
+            };
+        } catch (err) {
+            console.error('WebSocket auth failed:', err);
             scheduleReconnect();
-        };
-
-        ws.onerror = () => {
-            ws.close();
-        };
+        }
     }, [setConnected]);
 
     const handleParsedMessage = useCallback((msg: { topic: string; data: unknown; ts?: number }) => {
@@ -189,7 +228,7 @@ export function useWebSocket() {
 
                 switch (msg.topic) {
                     case 'orderbook.aggregated':
-                        setOrderbook(msg.data as any);
+                        pendingOrderbook.current = msg.data;
                         break;
                     case 'options.analytics':
                         setOptions(msg.data as any);
@@ -201,7 +240,7 @@ export function useWebSocket() {
                         addLiquidation(msg.data as any);
                         break;
                     case 'liquidations.heatmap':
-                        setLiquidations(msg.data as any);
+                        pendingLiquidations.current = msg.data;
                         break;
                     case 'funding_rate':
                         setFundingRates(msg.data as any);
@@ -213,7 +252,7 @@ export function useWebSocket() {
                         setVwaf(msg.data as any);
                         break;
                     case 'confluence':
-                        setConfluenceZones(msg.data as any);
+                        pendingConfluence.current = msg.data;
                         break;
                     case 'trades':
                         addTrade(msg.data as any);
@@ -240,7 +279,7 @@ export function useWebSocket() {
                         }
                         break;
                     case 'quant.analytics':
-                        setQuantSnapshot(msg.data as any);
+                        pendingQuant.current = msg.data;
                         break;
                     case 'ict.data':
                         setIctData(msg.data);
