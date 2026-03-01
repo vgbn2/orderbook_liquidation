@@ -18,7 +18,10 @@ self.onmessage = (event) => {
             break;
         case 'WS_MESSAGE':
             try {
-                const msg = JSON.parse(payload);
+                // Fix 4: Decode Transferable ArrayBuffer back to string
+                const decoder = new TextDecoder();
+                const str = decoder.decode(payload as ArrayBuffer);
+                const msg = JSON.parse(str);
 
                 // Inline CVD calculation for high-frequency candle updates
                 if (msg.topic && msg.topic.startsWith('candles.')) {

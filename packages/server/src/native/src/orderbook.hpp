@@ -1,9 +1,10 @@
 #pragma once
 #include "types.hpp"
-#include <map>          // std::map = Red-Black Tree — O(log n) insert/delete/find
+#include <algorithm>
 #include <mutex>
 #include <vector>
 #include <chrono>
+#include <array>
 
 // ── OrderbookSide ─────────────────────────────────────────────
 // One side (bid or ask) of a single exchange's orderbook.
@@ -14,53 +15,114 @@
 template<typename Comparator>
 class OrderbookSide {
 public:
+    OrderbookSide() {
+        levels_.fill(Level{0, 0.0});
+    }
+
     // Apply a single delta. qty=0 → remove the level.
     // Returns true if the best price changed (triggers BBO update).
     bool applyDelta(int64_t price_raw, double qty) {
         if (qty == 0.0 || qty < 1e-12) {
-            levels_.erase(price_raw);
+            return removeLevel(price_raw);
         } else {
-            levels_[price_raw] = qty;
+            return upsertLevel(price_raw, qty);
         }
-        return !levels_.empty()
-            ? levels_.begin()->first != last_best_
-            : last_best_ != 0;
     }
 
     // Replace entire side from snapshot (REST seed).
     void applySnapshot(const std::vector<std::pair<int64_t, double>>& data) {
-        levels_.clear();
+        count_ = 0;
         for (const auto& pair : data) {
-            if (pair.second > 1e-12) levels_[pair.first] = pair.second;
+            if (pair.second > 1e-12 && count_ < MAX_LEVELS) {
+                levels_[count_++] = Level{pair.first, pair.second};
+            }
         }
-        last_best_ = levels_.empty() ? 0 : levels_.begin()->first;
+        // Ensure sorted initially
+        std::sort(levels_.begin(), levels_.begin() + count_, 
+                 [](const Level& a, const Level& b) { return Comparator()(a.price, b.price); });
+        
+        last_best_ = count_ > 0 ? levels_[0].price : 0;
     }
 
     // Copy top N levels into output array. Returns count written.
     size_t topN(Level* out, size_t n) const {
-        size_t count = 0;
-        for (auto it = levels_.begin(); it != levels_.end() && count < n; ++it, ++count) {
-            out[count] = Level{ it->first, it->second };
-        }
-        return count;
+        size_t to_copy = std::min(count_, n);
+        std::copy(levels_.begin(), levels_.begin() + to_copy, out);
+        return to_copy;
     }
 
     double totalQty() const {
         double sum = 0;
-        for (const auto& pair : levels_) sum += pair.second;
+        for (size_t i = 0; i < count_; ++i) sum += levels_[i].qty;
         return sum;
     }
 
     int64_t bestPrice() const {
-        return levels_.empty() ? 0 : levels_.begin()->first;
+        return count_ > 0 ? levels_[0].price : 0;
     }
 
-    bool empty() const { return levels_.empty(); }
-    size_t size() const { return levels_.size(); }
+    bool empty() const { return count_ == 0; }
+    size_t size() const { return count_; }
 
 private:
-    std::map<int64_t, double, Comparator> levels_;
+    static constexpr size_t MAX_LEVELS = 500;
+    std::array<Level, MAX_LEVELS> levels_;
+    size_t count_ = 0;
     int64_t last_best_ = 0;
+
+    bool removeLevel(int64_t price) {
+        for (size_t i = 0; i < count_; ++i) {
+            if (levels_[i].price == price) {
+                // Shift everything left
+                std::move(levels_.begin() + i + 1, levels_.begin() + count_, levels_.begin() + i);
+                count_--;
+                
+                int64_t new_best = count_ > 0 ? levels_[0].price : 0;
+                bool changed = (new_best != last_best_);
+                last_best_ = new_best;
+                return changed;
+            }
+            if (Comparator()(price, levels_[i].price)) break; // Passed where it should be
+        }
+        return false;
+    }
+
+    bool upsertLevel(int64_t price, double qty) {
+        for (size_t i = 0; i < count_; ++i) {
+            if (levels_[i].price == price) {
+                levels_[i].qty = qty; // Update existing
+                return false;         // Best price doesn't change on simply updating qty
+            }
+            if (Comparator()(price, levels_[i].price)) {
+                // Insert here, shift right
+                if (count_ < MAX_LEVELS) {
+                    std::move_backward(levels_.begin() + i, levels_.begin() + count_, levels_.begin() + count_ + 1);
+                    count_++;
+                } else if (i < MAX_LEVELS) {
+                    // Drops worst price if full
+                    std::move_backward(levels_.begin() + i, levels_.begin() + MAX_LEVELS - 1, levels_.begin() + MAX_LEVELS);
+                } else {
+                    return false; // Fits past MAX_LEVELS, ignore
+                }
+                
+                levels_[i] = Level{price, qty};
+                int64_t new_best = count_ > 0 ? levels_[0].price : 0;
+                bool changed = (new_best != last_best_);
+                last_best_ = new_best;
+                return changed;
+            }
+        }
+        
+        // Append if room
+        if (count_ < MAX_LEVELS) {
+            levels_[count_++] = Level{price, qty};
+            int64_t new_best = levels_[0].price;
+            bool changed = (new_best != last_best_);
+            last_best_ = new_best;
+            return changed;
+        }
+        return false;
+    }
 };
 
 using BidSide = OrderbookSide<std::greater<int64_t>>;   // high → low

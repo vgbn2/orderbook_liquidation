@@ -100,12 +100,16 @@ export function useWebSocket() {
                 lastFreqUpdate.current = now;
             }
 
-            // Offload to Web Worker instead of main thread JSON.parse
+            // Offload to Web Worker using Transferable Objects (Fix 4: GC Pauses)
             if (workerRef.current) {
+                // Convert string to ArrayBuffer to transfer ownership (Zero-copy to worker)
+                const encoder = new TextEncoder();
+                const buffer = encoder.encode(event.data).buffer;
+
                 workerRef.current.postMessage({
                     type: 'WS_MESSAGE',
-                    payload: event.data
-                });
+                    payload: buffer
+                }, [buffer]); // <-- Transferable array
             }
         };
 
