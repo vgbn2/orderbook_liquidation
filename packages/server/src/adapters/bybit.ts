@@ -74,6 +74,10 @@ function connect(symbol: string) {
                 } else if (msg.type === 'delta') {
                     // Check logic: Contiguous update?
                     if (lastSeq !== null && currentU) {
+                        if (currentU <= lastSeq) {
+                            // Ignore older or duplicate update IDs
+                            return;
+                        }
                         if (currentU !== lastSeq + 1) {
                             // Gap detected
                             logger.error({ expected: lastSeq + 1, received: currentU }, 'Bybit Sequence Gap');
