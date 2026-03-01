@@ -94,7 +94,7 @@ export function App() {
             } else if (e.key === '2') {
                 setView('backtest');
             } else if (e.key === '3') {
-                const exchanges = ['binance', 'bybit', 'okx', 'hyperliquid'] as const;
+                const exchanges = ['binance', 'bybit', 'okx', 'hyperliquid', 'mexc', 'bitget', 'gateio'] as const;
                 const idx = exchanges.indexOf(exchangeView);
                 setExchangeView(exchanges[(idx + 1) % exchanges.length]);
                 setView('exchange');

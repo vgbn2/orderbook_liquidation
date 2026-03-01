@@ -31,6 +31,9 @@ const envSchema = z.object({
     ENABLE_OKX: z.coerce.boolean().default(true),
     ENABLE_DERIBIT: z.coerce.boolean().default(true),
     ENABLE_HYPERLIQUID: z.coerce.boolean().default(true),
+    ENABLE_MEXC: z.coerce.boolean().default(true),
+    ENABLE_BITGET: z.coerce.boolean().default(true),
+    ENABLE_GATEIO: z.coerce.boolean().default(true),
 });
 
 export const config = envSchema.parse(process.env);

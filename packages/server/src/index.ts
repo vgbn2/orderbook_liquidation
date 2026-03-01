@@ -14,6 +14,9 @@ import { startBybit, stopBybit } from './adapters/bybit.js';
 import { startOkx, stopOkx } from './adapters/okx.js';
 import { startDeribit, stopDeribit } from './adapters/deribit.js';
 import { startHyperliquid, stopHyperliquid } from './adapters/hyperliquid.js';
+import { startMexc, stopMexc } from './adapters/mexc.js';
+import { startBitget, stopBitget } from './adapters/bitget.js';
+import { startGateio, stopGateio } from './adapters/gateio.js';
 import { ohlcvRoutes } from './routes/ohlcv.js';
 import { optionsEngine, generateSimulatedChain, generateSimulatedTrade } from './engines/options.js';
 import { liquidationEngine, generateSimulatedLiquidation, seedLiquidationHistory } from './engines/liquidations.js';
@@ -41,22 +44,31 @@ async function start(): Promise<void> {
 
     // ── Connect infrastructure ────────────────────
     logger.info('Connecting to Redis...');
-    await redis.connect();
-    await redisSub.connect();
+    await redis.connect().catch((err) => {
+        logger.warn({ err: err.message }, 'Redis initial connect failed, will retry in background');
+    });
+
+    await redisSub.connect().catch((err) => {
+        logger.warn({ err: err.message }, 'Redis Sub initial connect failed, will retry in background');
+    });
 
     // Fix S6: Use Redis subscriber for distributed alerts/signals
-    redisSub.subscribe('TERMINUS_ALERTS', (err) => {
-        if (err) logger.error('Failed to subscribe to TERMINUS_ALERTS');
-    });
+    try {
+        redisSub.subscribe('TERMINUS_ALERTS', (err) => {
+            if (err) logger.error('Failed to subscribe to TERMINUS_ALERTS');
+        });
 
-    redisSub.on('message', (channel, message) => {
-        if (channel === 'TERMINUS_ALERTS') {
-            try {
-                const parse = JSON.parse(message);
-                clientHub.broadcast('alerts' as any, parse);
-            } catch { /* ignore */ }
-        }
-    });
+        redisSub.on('message', (channel, message) => {
+            if (channel === 'TERMINUS_ALERTS') {
+                try {
+                    const parse = JSON.parse(message);
+                    clientHub.broadcast('alerts' as any, parse);
+                } catch { /* ignore */ }
+            }
+        });
+    } catch (err) {
+        logger.error({ err }, 'Redis PubSub initialization failed');
+    }
 
     logger.info('Connecting to TimescaleDB...');
     // Pool connects lazily on first query, but let's verify
@@ -85,8 +97,22 @@ async function start(): Promise<void> {
     logger.info('Connecting to Deribit...');
     startDeribit(globalSymbol);
 
-    logger.info('Connecting to Hyperliquid...');
-    startHyperliquid(globalSymbol);
+    if (config.ENABLE_HYPERLIQUID) {
+        logger.info('Connecting to Hyperliquid...');
+        startHyperliquid(globalSymbol);
+    }
+    if (config.ENABLE_MEXC) {
+        logger.info('Connecting to MEXC...');
+        startMexc(globalSymbol);
+    }
+    if (config.ENABLE_BITGET) {
+        logger.info('Connecting to Bitget...');
+        startBitget(globalSymbol);
+    }
+    if (config.ENABLE_GATEIO) {
+        logger.info('Connecting to Gateio...');
+        startGateio(globalSymbol);
+    }
 
     // Fetch initial historical candles
     const historicalCandles = await binanceAdapter.fetchKlines(globalSymbol, '1m', 500);
@@ -326,10 +352,17 @@ async function start(): Promise<void> {
                         stopOkx(oldSymbol);
                         stopDeribit(oldSymbol);
                         stopHyperliquid(oldSymbol);
+                        stopMexc(oldSymbol);
+                        stopBitget(oldSymbol);
+                        stopGateio(oldSymbol);
+
                         startBybit(globalSymbol);
                         startOkx(globalSymbol);
                         startDeribit(globalSymbol);
                         startHyperliquid(globalSymbol);
+                        startMexc(globalSymbol);
+                        startBitget(globalSymbol);
+                        startGateio(globalSymbol);
 
                         binanceAdapter.switchSymbol(globalSymbol).then(() => {
                             binanceAdapter.fetchKlines(globalSymbol, '1m', 500).then(candles => {
@@ -385,6 +418,9 @@ async function shutdown(signal: string): Promise<void> {
     stopOkx(globalSymbol);
     stopDeribit(globalSymbol);
     stopHyperliquid(globalSymbol);
+    stopMexc(globalSymbol);
+    stopBitget(globalSymbol);
+    stopGateio(globalSymbol);
     await wsManager.disconnectAll();
 
     // 3. Close database connections

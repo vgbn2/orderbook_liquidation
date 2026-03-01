@@ -2,7 +2,7 @@
 //  Normalized Data Schemas — shared between all adapters
 // ══════════════════════════════════════════════════════════════
 
-export type Exchange = 'binance' | 'bybit' | 'okx' | 'deribit' | 'hyperliquid' | 'dydx';
+export type Exchange = 'binance' | 'bybit' | 'okx' | 'deribit' | 'hyperliquid' | 'mexc' | 'bitget' | 'gateio' | 'dydx';
 
 // ── Candle ────────────────────────────────────
 export interface Candle {
