@@ -16,31 +16,39 @@ export async function ohlcvRoutes(app: FastifyInstance): Promise<void> {
         const numLimit = Math.min(parseInt(limit) || 500, 100000);
 
         try {
+            logger.info({ symbol, interval, numLimit }, 'Fetching OHLCV from DB');
             // Try DB first
             const dbResult = await query(
-                `SELECT
-          EXTRACT(EPOCH FROM time)::bigint AS time,
-          open, high, low, close, volume
-         FROM ohlcv_candles
-         WHERE symbol = $1 AND timeframe = $2
-         ORDER BY time DESC
-         LIMIT $3`,
-                [symbol, interval, numLimit],
+                `SELECT 
+                  EXTRACT(EPOCH FROM time)::bigint AS time,
+                  open, high, low, close, volume
+                 FROM ohlcv_candles 
+                 WHERE symbol = $1 AND timeframe = $2
+                 ORDER BY time DESC
+                 LIMIT $3`,
+                [symbol.toUpperCase(), interval, numLimit],
             );
 
             if (dbResult.rows.length >= numLimit * 0.95) {
-                // Reverse to chronological order
+                logger.info({ count: dbResult.rows.length }, 'Returning OHLCV from DB');
                 return reply.send(dbResult.rows.reverse());
             }
 
             // Fallback to Binance REST
-            logger.info({ symbol, interval, limit: numLimit }, 'DB empty, fetching from Binance REST');
-            const candles = await binanceAdapter.fetchKlines(symbol, interval, numLimit);
+            logger.info({ symbol, interval, limit: numLimit }, 'DB has insufficient data, fetching from Binance REST');
+            const candles = await binanceAdapter.fetchKlines(symbol.toUpperCase(), interval, numLimit);
+
+            if (candles.length === 0) {
+                logger.warn({ symbol, interval }, 'Binance REST returned zero candles');
+            }
 
             return reply.send(candles);
         } catch (err) {
-            logger.error({ err }, 'OHLCV route error');
-            return reply.code(500).send({ error: 'Failed to fetch candle data' });
+            logger.error({ err, symbol, interval, numLimit }, 'OHLCV route error');
+            return reply.code(500).send({
+                error: 'Failed to fetch candle data',
+                message: (err as Error).message
+            });
         }
     });
 }

@@ -458,7 +458,7 @@ function MarketSwitcher({ markets, onSelect, onClose }: { markets: any[], onSele
                             </div>
                             <div style={{ flex: 1, textAlign: "left" }}>
                                 <div style={{ fontSize: 12, fontWeight: "bold", color: C.text, fontFamily: "monospace" }}>{m.symbol}</div>
-                                <div style={{ fontSize: 10, color: C.muted }}>PERP · Binance</div>
+                                <div style={{ fontSize: 10, color: C.muted }}>PERP · Aggregated</div>
                             </div>
                             <div style={{ textAlign: "right" }}>
                                 <div style={{ fontSize: 12, color: C.text, fontFamily: "monospace" }}>${m.price}</div>
@@ -688,7 +688,10 @@ export function TerminusNav() {
                         { id: 'binance', label: 'Binance' },
                         { id: 'bybit', label: 'Bybit' },
                         { id: 'okx', label: 'OKX' },
-                        { id: 'hyperliquid', label: 'Hyperliquid' }
+                        { id: 'hyperliquid', label: 'Hyperliquid' },
+                        { id: 'mexc', label: 'MEXC' },
+                        { id: 'bitget', label: 'Bitget' },
+                        { id: 'gateio', label: 'Gate.io' }
                     ].map(ex => (
                         <button
                             key={ex.id}

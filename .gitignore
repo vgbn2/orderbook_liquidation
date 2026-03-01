@@ -4,6 +4,10 @@ dist/
 build/
 .npm/
 
+# Environment variables
+.env
+.env.*
+
 # Logs and database
 *.log
 *.db
@@ -17,3 +21,10 @@ temp/
 # OS files
 Thumbs.db
 Desktop.ini
+
+# C++ Build
+*.node
+build/
+release/
+debug/
+

@@ -20,6 +20,13 @@ interface OrderbookState {
     bestAsk: number;
 }
 
+export interface OrderbookDelta {
+    u: number;
+    b: [string, string][];
+    a: [string, string][];
+    isSnapshot?: boolean;
+}
+
 export class OrderbookEngine {
     private books = new Map<Exchange, OrderbookState>();
     private broadcastTimer: ReturnType<typeof setInterval> | null = null;
@@ -69,18 +76,20 @@ export class OrderbookEngine {
     /**
      * Apply delta update from WebSocket.
      */
-    applyDelta(exchange: Exchange, delta: {
-        u: number;  // final update ID
-        b: [string, string][];  // bid deltas
-        a: [string, string][];  // ask deltas
-    }): void {
+    applyDelta(exchange: Exchange, delta: OrderbookDelta): void {
         const book = this.books.get(exchange);
         if (!book) return;
 
+        // Some exchanges (MEXC, Gateio) send full trees on every flush rather than diffs
+        if (delta.isSnapshot) {
+            book.bids.clear();
+            book.asks.clear();
+        }
+
         // Apply bid deltas
-        for (const [p, q] of delta.b) {
-            const price = parseFloat(p);
-            const qty = parseFloat(q);
+        for (const [priceStr, qtyStr] of delta.b) {
+            const price = parseFloat(priceStr);
+            const qty = parseFloat(qtyStr);
             if (qty === 0) {
                 book.bids.delete(price);
             } else {

@@ -3,7 +3,7 @@ import { useRef, useEffect } from 'react';
 
 // Also need to get EXCHANGE_CONFIG and Props
 interface Props {
-    exchange: 'binance' | 'bybit' | 'okx' | 'hyperliquid'
+    exchange: 'binance' | 'bybit' | 'okx' | 'hyperliquid' | 'mexc' | 'bitget' | 'gateio'
 }
 
 const EXCHANGE_CONFIG = {
@@ -11,6 +11,9 @@ const EXCHANGE_CONFIG = {
     bybit: { color: '#f7a600', url: 'https://www.bybitglobal.com/invite?ref=KL4QY3Q', label: 'Bybit Linear' },
     okx: { color: '#00b4ff', url: 'https://www.okx.com', label: 'OKX Swap' },
     hyperliquid: { color: '#00e87a', url: 'https://app.hyperliquid.xyz', label: 'Hyperliquid Perp' },
+    mexc: { color: '#0084ff', url: 'https://promote.mexc.com/r/MyGmjWjC', label: 'MEXC Futures' },
+    bitget: { color: '#00afb2', url: 'https://www.bitget.com/referral/register?clacCode=5N1L5NYG', label: 'Bitget Swap' },
+    gateio: { color: '#2a5ada', url: 'https://www.gate.com/signup/VLZNUV5BCQ?ref_type=103', label: 'Gate.io Perpetual' },
 };
 
 export function ExchangePage({ exchange }: Props) {

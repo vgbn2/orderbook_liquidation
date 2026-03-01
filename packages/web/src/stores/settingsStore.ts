@@ -18,8 +18,8 @@ interface SettingsState {
     currentView: 'chart' | 'backtest' | 'exchange' | 'screener';
     setView: (v: 'chart' | 'backtest' | 'exchange' | 'screener') => void;
 
-    exchangeView: 'binance' | 'bybit' | 'okx' | 'hyperliquid';
-    setExchangeView: (ex: 'binance' | 'bybit' | 'okx' | 'hyperliquid') => void;
+    exchangeView: 'binance' | 'bybit' | 'okx' | 'hyperliquid' | 'mexc' | 'bitget' | 'gateio';
+    setExchangeView: (ex: 'binance' | 'bybit' | 'okx' | 'hyperliquid' | 'mexc' | 'bitget' | 'gateio') => void;
 }
 
 function safeGet(key: string, fallback: string): string {
