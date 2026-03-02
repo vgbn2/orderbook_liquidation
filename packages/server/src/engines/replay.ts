@@ -16,12 +16,26 @@ class ReplayEngine {
     }>();
 
     async startSession(clientId: string, config: ReplayConfig) {
+        // Fix CRIT-3: Harden Replay Engine
+        // 1. Validate and Clamp Speed (0.1x to 100x)
+        const speed = Math.max(0.1, Math.min(config.speed || 1, 100));
+
+        // 2. Limit Duration (max 30 days)
+        const MAX_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+        const duration = config.endTime - config.startTime;
+
+        if (duration <= 0 || duration > MAX_DURATION_MS) {
+            logger.warn({ clientId, duration }, 'Replay session rejected: invalid duration');
+            clientHub.sendToClient(clientId, 'replay' as any, { type: 'ERROR', message: 'Invalid duration' });
+            return;
+        }
+
         this.stopSession(clientId);
 
-        logger.info({ clientId, config }, 'Starting replay session');
+        logger.info({ clientId, config: { ...config, speed } }, 'Starting replay session');
 
         const session = {
-            config,
+            config: { ...config, speed },
             currentTime: config.startTime,
             timer: null as any
         };
@@ -30,11 +44,14 @@ class ReplayEngine {
 
         // Tick every 500ms real-time
         const realTick = 500;
-        const simTick = realTick * config.speed;
+        const simTick = realTick * speed;
 
         session.timer = setInterval(async () => {
             const current = this.activeSessions.get(clientId);
-            if (!current) return;
+            if (!current) {
+                if (session.timer) clearInterval(session.timer);
+                return;
+            }
 
             const nextTime = current.currentTime + simTick;
             if (nextTime > config.endTime) {
@@ -46,6 +63,12 @@ class ReplayEngine {
             // Fetch data between current and nextTime
             try {
                 const data = await this.fetchRange(current.currentTime, nextTime);
+                if (data.length > 5000) {
+                    // Fix CRIT-3 Attack 2: Prevent massive data transfer OOM
+                    logger.warn({ clientId, count: data.length }, 'Replay range too large, truncating');
+                    data.splice(5000);
+                }
+
                 if (data.length > 0) {
                     clientHub.sendToClient(clientId, 'replay' as any, {
                         type: 'BATCH',
@@ -56,6 +79,7 @@ class ReplayEngine {
                 current.currentTime = nextTime;
             } catch (err) {
                 logger.error({ err }, 'Replay fetch error');
+                this.stopSession(clientId);
             }
         }, realTick);
     }

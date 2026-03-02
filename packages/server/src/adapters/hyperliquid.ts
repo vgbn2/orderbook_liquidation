@@ -1,12 +1,14 @@
 import WebSocket from 'ws';
 import { logger } from '../logger.js';
 import { orderbookEngine } from '../engines/orderbook.js';
+import { aggregatedCandleEngine } from '../engines/AggregatedCandleEngine.js';
 
 const HL_WS_URL = 'wss://api.hyperliquid.xyz/ws';
 
 let ws: WebSocket | null = null;
 let currentCoin = 'BTC';
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let isStopped = false;
 
 export function startHyperliquid(symbol: string) {
@@ -27,8 +29,13 @@ export function startHyperliquid(symbol: string) {
 
 export function stopHyperliquid(symbol: string) {
     isStopped = true;
+    stopHeartbeat();
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    if (ws) { ws.close(); ws = null; }
+    if (ws) {
+        ws.removeAllListeners();
+        ws.close();
+        ws = null;
+    }
     logger.info({ symbol }, 'Hyperliquid adapter stopped');
 }
 
@@ -40,51 +47,76 @@ function connect() {
     ws.on('open', () => {
         logger.info({ coin: currentCoin }, 'Hyperliquid WS connected');
 
-        // Subscribe to L2 orderbook for this coin
+        // Subscribe to L2 orderbook
         ws?.send(JSON.stringify({
             method: 'subscribe',
-            subscription: {
-                type: 'l2Book',
-                coin: currentCoin,
-            }
+            subscription: { type: 'l2Book', coin: currentCoin }
         }));
+
+        // Subscribe to Trades
+        ws?.send(JSON.stringify({
+            method: 'subscribe',
+            subscription: { type: 'trades', coin: currentCoin }
+        }));
+        startHeartbeat();
     });
 
     ws.on('message', (raw) => {
         try {
             const msg = JSON.parse(raw.toString());
 
-            // Hyperliquid sends: { channel: 'l2Book', data: { coin, time, levels: [[bids], [asks]] } }
-            if (msg.channel !== 'l2Book' || !msg.data) return;
+            // Handle Orderbook
+            if (msg.channel === 'l2Book' && msg.data) {
+                const { levels, time } = msg.data;
+                const bids = levels[0].map((l: any) => [l.px, l.sz]);
+                const asks = levels[1].map((l: any) => [l.px, l.sz]);
+                orderbookEngine.initSnapshot('hyperliquid', { lastUpdateId: time, bids, asks });
+            }
 
-            const { levels, time } = msg.data;
-            if (!Array.isArray(levels) || levels.length < 2) return;
-
-            const rawBids = levels[0];   // array of { px, sz, n }
-            const rawAsks = levels[1];
-
-            // Convert to orderbookEngine format: [price_string, qty_string][]
-            const bids = rawBids.map((l: { px: string; sz: string }) => [l.px, l.sz]);
-            const asks = rawAsks.map((l: { px: string; sz: string }) => [l.px, l.sz]);
-
-            // Hyperliquid sends full snapshots every update (no delta/diff protocol)
-            // So always call initSnapshot to replace the book
-            orderbookEngine.initSnapshot('hyperliquid', { lastUpdateId: time, bids, asks });
-
-        } catch (err) {
-            // Silently ignore parse errors — HL occasionally sends ping frames
-        }
+            // Handle Trades
+            if (msg.channel === 'trades' && msg.data) {
+                for (const t of msg.data) {
+                    if (t.coin !== currentCoin) continue;
+                    aggregatedCandleEngine.ingestTrade(
+                        'hyperliquid',
+                        `${t.coin}USDT`, // Normalized symbol
+                        parseFloat(t.px),
+                        parseFloat(t.sz),
+                        t.side === 'B' ? t.time : t.time // HL uses side but time is same
+                    );
+                }
+            }
+        } catch (err) { }
     });
 
     ws.on('close', (code) => {
+        stopHeartbeat();
         ws = null;
         if (isStopped) return;
         logger.warn({ coin: currentCoin, code }, 'Hyperliquid WS closed — reconnecting in 3s');
-        reconnectTimer = setTimeout(connect, 3000);
+        reconnectTimer = setTimeout(() => {
+            if (!isStopped) connect();
+        }, 3000);
     });
 
     ws.on('error', (err) => {
         logger.error({ err }, 'Hyperliquid WS error');
         ws?.close();
     });
+}
+
+function startHeartbeat() {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ method: 'ping' }));
+        }
+    }, 20_000);
+}
+
+function stopHeartbeat() {
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
 }

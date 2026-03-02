@@ -7,6 +7,7 @@ import { orderbookEngine } from '../engines/orderbook.js';
 import { amdDetector } from '../engines/amd.js';
 import { ictEngine } from '../engines/ict.js';
 import { tradeBatcher } from '../db/TradeBatcher.js';
+import { aggregatedCandleEngine } from '../engines/AggregatedCandleEngine.js';
 import type { Candle, ExchangeAdapter, Exchange } from './types.js';
 
 // ══════════════════════════════════════════════════════════════
@@ -31,6 +32,8 @@ export class BinanceAdapter implements ExchangeAdapter {
     private symbol = 'btcusdt';
     private intervals = ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'];
     private pollTimer: ReturnType<typeof setInterval> | null = null;
+    private isStopped = false;
+    private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
     // Sequence checking state for orderbook desync detection
     private lastUpdateId: number | null = null;
@@ -106,11 +109,13 @@ export class BinanceAdapter implements ExchangeAdapter {
             logger.info({ streams }, 'Connecting to Binance kline streams...');
 
             this.ws = new WebSocket(url, { handshakeTimeout: 10_000 });
+            this.isStopped = false;
 
             this.ws.on('open', () => {
                 logger.info('Binance kline streams connected');
                 this.health = 'healthy';
                 this.reconnectAttempts = 0;
+                this._startHeartbeat();
                 resolve();
             });
 
@@ -133,7 +138,8 @@ export class BinanceAdapter implements ExchangeAdapter {
             this.ws.on('close', () => {
                 this.health = 'down';
                 logger.warn('Binance kline stream closed');
-                this._scheduleReconnect();
+                this._stopHeartbeat();
+                if (!this.isStopped) this._scheduleReconnect();
             });
 
             this.ws.on('error', (err) => {
@@ -160,7 +166,7 @@ export class BinanceAdapter implements ExchangeAdapter {
         x: boolean;      // is this kline closed?
         i: string;       // interval
     }, interval: string): void {
-        const candle: Candle & { isUpdate?: boolean; interval?: string } = {
+        const candle: Candle & { isUpdate?: boolean; interval?: string; symbol?: string } = {
             time: Math.floor(k.t / 1000),
             open: parseFloat(k.o),
             high: parseFloat(k.h),
@@ -169,7 +175,8 @@ export class BinanceAdapter implements ExchangeAdapter {
             volume: parseFloat(k.v),
             exchange: 'binance',
             isUpdate: !k.x,
-            interval: interval
+            interval: interval,
+            symbol: this.symbol.toUpperCase()
         };
 
         // Broadcast to frontend
@@ -204,15 +211,20 @@ export class BinanceAdapter implements ExchangeAdapter {
     }
 
     private _scheduleReconnect(): void {
+        if (this.isStopped) return; // Fix HIGH-1
         if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
         const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 60_000);
         this.reconnectAttempts++;
 
-        this.reconnectTimer = setTimeout(() => this.connect(), delay);
+        this.reconnectTimer = setTimeout(() => {
+            if (!this.isStopped) this.connect();
+        }, delay);
     }
 
     async disconnect(): Promise<void> {
+        this.isStopped = true;
+        this._stopHeartbeat();
         if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
         if (this.depthReconnectTimer) clearTimeout(this.depthReconnectTimer);
         if (this.tradesReconnectTimer) clearTimeout(this.tradesReconnectTimer);
@@ -224,14 +236,17 @@ export class BinanceAdapter implements ExchangeAdapter {
         if (this.ws) {
             this.ws.removeAllListeners();
             this.ws.close(1000, 'Shutdown');
+            this.ws = null;
         }
         if (this.wsDepth) {
             this.wsDepth.removeAllListeners();
             this.wsDepth.close(1000, 'Shutdown');
+            this.wsDepth = null;
         }
         if (this.wsTrades) {
             this.wsTrades.removeAllListeners();
             this.wsTrades.close(1000, 'Shutdown');
+            this.wsTrades = null;
         }
         orderbookEngine.stop();
         this.health = 'down';
@@ -285,6 +300,19 @@ export class BinanceAdapter implements ExchangeAdapter {
                     clientHub.broadcast('open_interest' as any, {
                         time: oData.time,
                         oi: parseFloat(oData.openInterest)
+                    });
+                }
+
+                // Fetch Deep Depth (1000 levels) for full depth UI
+                const dRes = await fetch(`${REST_BASE}/fapi/v1/depth?symbol=${symbol}&limit=1000`);
+                if (dRes.ok) {
+                    const dData = await dRes.json() as { bids: [string, string][], asks: [string, string][] };
+                    clientHub.broadcast('orderbook.deep' as any, {
+                        time: Date.now(),
+                        exchange: 'binance',
+                        symbol,
+                        bids: dData.bids.map((b) => ({ price: parseFloat(b[0]), qty: parseFloat(b[1]) })),
+                        asks: dData.asks.map((a) => ({ price: parseFloat(a[0]), qty: parseFloat(a[1]) }))
                     });
                 }
             } catch (err) {
@@ -369,7 +397,9 @@ export class BinanceAdapter implements ExchangeAdapter {
 
             this.wsDepth.on('close', () => {
                 logger.warn('Binance depth stream closed');
-                this.depthReconnectTimer = setTimeout(() => this.connectOrderbook(), 3000);
+                if (!this.isStopped) {
+                    this.depthReconnectTimer = setTimeout(() => this.connectOrderbook(), 3000);
+                }
             });
 
             this.wsDepth.on('error', (err) => {
@@ -398,7 +428,29 @@ export class BinanceAdapter implements ExchangeAdapter {
         if (this.depthReconnectTimer) clearTimeout(this.depthReconnectTimer);
 
         // Immediately try to reconnect (which fetches a new REST snapshot)
-        this.connectOrderbook();
+        if (!this.isStopped) this.connectOrderbook();
+    }
+
+    private _startHeartbeat() {
+        if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+        this.heartbeatTimer = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.ping();
+            }
+            if (this.wsDepth && this.wsDepth.readyState === WebSocket.OPEN) {
+                this.wsDepth.ping();
+            }
+            if (this.wsTrades && this.wsTrades.readyState === WebSocket.OPEN) {
+                this.wsTrades.ping();
+            }
+        }, 30_000);
+    }
+
+    private _stopHeartbeat() {
+        if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+        }
     }
 
     /**
@@ -440,6 +492,9 @@ export class BinanceAdapter implements ExchangeAdapter {
 
                         // Fix 2: Queue Database Inserts to prevent Connection Pool exhaustion
                         tradeBatcher.add(trade);
+
+                        // Feed into Aggregated Candle Engine (VWAP)
+                        aggregatedCandleEngine.ingestTrade('binance', trade.symbol, trade.price, trade.qty, trade.time);
                     }
                 } catch (err) {
                     logger.error({ err }, 'Binance trades parse error');
@@ -448,7 +503,9 @@ export class BinanceAdapter implements ExchangeAdapter {
 
             this.wsTrades.on('close', () => {
                 logger.warn('Binance trades stream closed');
-                this.tradesReconnectTimer = setTimeout(() => this.connectTrades(), 3000);
+                if (!this.isStopped) {
+                    this.tradesReconnectTimer = setTimeout(() => this.connectTrades(), 3000);
+                }
             });
 
             this.wsTrades.on('error', (err) => {

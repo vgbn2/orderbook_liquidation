@@ -33,6 +33,8 @@ export interface OrderbookWall {
     price: number;
     qty: number;
     pct: number;              // percentage of total depth
+    score?: number;
+    classification?: 'MINOR' | 'SIGNIFICANT' | 'INSTITUTIONAL';
     side: 'bid' | 'ask';
 }
 

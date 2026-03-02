@@ -22,7 +22,7 @@ import { useSettingsStore } from './stores/settingsStore';
 import { useWebSocket } from './hooks/useWebSocket';
 
 export function App() {
-    const { connected, setCandles, symbol, timeframe } = useMarketStore();
+    const { connected, setCandles, setAggregatedCandles, showAggregated, symbol, timeframe } = useMarketStore();
 
     // Initialize Singleton WebSocket connection
     useWebSocket();
@@ -64,11 +64,13 @@ export function App() {
     // Fetch historical candles from backend
     const fetchHistorical = useCallback(async (tf: string, sym: string) => {
         try {
-            const res = await fetch(`/api/ohlcv?symbol=${sym}&interval=${tf}&limit=5000`);
+            const endpoint = showAggregated ? '/api/ohlcv/aggregated' : '/api/ohlcv';
+            const res = await fetch(`${endpoint}?symbol=${sym}&interval=${tf}&limit=5000`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             if (data.length > 0) {
-                setCandles(data);
+                if (showAggregated) setAggregatedCandles(data);
+                else setCandles(data);
                 setLoading(false);
             }
         } catch (err) {
@@ -82,7 +84,7 @@ export function App() {
     useEffect(() => {
         setLoading(true);
         fetchHistorical(timeframe, symbol);
-    }, [timeframe, symbol, fetchHistorical]);
+    }, [timeframe, symbol, showAggregated, fetchHistorical]);
 
     // Keyboard shortcuts for view switching
     useEffect(() => {

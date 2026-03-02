@@ -81,6 +81,10 @@ export function Toolbar({
 
     const showOrderbook = useSettingsStore(s => s.showOrderbook);
     const toggleOrderbook = useSettingsStore(s => s.toggleOrderbook);
+
+    const showAggregated = useMarketStore(s => s.showAggregated);
+    const setShowAggregated = useMarketStore(s => s.setShowAggregated);
+
     const notificationLevel = useSettingsStore(s => s.notificationLevel);
     const setNotificationLevel = useSettingsStore(s => s.setNotificationLevel);
 
@@ -151,6 +155,26 @@ export function Toolbar({
                     onClick={() => { if (!activeIndicators.has('line_chart')) toggleIndicator('line_chart'); }}
                     title="Line"
                 >📈</button>
+            </div>
+
+            <div className="divider"></div>
+
+            {/* Aggregated Mode */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <button
+                    className={`btn btn-sm ${showAggregated ? "active" : ""}`}
+                    style={{
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderColor: showAggregated ? 'var(--accent)' : 'var(--border-medium)',
+                        color: showAggregated ? 'var(--accent)' : 'var(--text-muted)'
+                    }}
+                    onClick={() => setShowAggregated(!showAggregated)}
+                    title="Toggle Aggregated VWAP View (Multi-Exchange)"
+                >
+                    AGGREGATED
+                </button>
             </div>
 
             <div className="divider"></div>

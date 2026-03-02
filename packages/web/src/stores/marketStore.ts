@@ -170,6 +170,8 @@ interface MarketState {
     // Orderbook
     orderbook: OrderbookData | null;
     setOrderbook: (ob: OrderbookData | null) => void;
+    deepOrderbook: { bids: { price: number; qty: number }[]; asks: { price: number; qty: number }[] } | null;
+    setDeepOrderbook: (ob: { bids: { price: number; qty: number }[]; asks: { price: number; qty: number }[] } | null) => void;
 
     // Options
     options: OptionsAnalyticsData | null;
@@ -240,6 +242,14 @@ interface MarketState {
     htfBias: Record<string, HTFBias>;
     setHtfBias: (tf: string, bias: HTFBias) => void;
 
+    // —— Aggregated VWAP Candles ——
+    showAggregated: boolean;
+    setShowAggregated: (v: boolean) => void;
+    aggregatedCandles: (CandleData & { vwap?: number; exchangeSplit?: Record<string, number> })[];
+    setAggregatedCandles: (candles: (CandleData & { vwap?: number; exchangeSplit?: Record<string, number> })[]) => void;
+    addAggregatedCandle: (candle: any) => void;
+    updateLastAggregatedCandle: (candle: any) => void;
+
     // WebSocket singleton
     send: (msg: any) => void;
     setSend: (fn: (msg: any) => void) => void;
@@ -271,13 +281,24 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     },
 
     candles: [],
-    setCandles: (candles) => {
-        if (candles.length > 0) {
-            const last = candles[candles.length - 1];
-            set({ candles: [...candles], lastPrice: last.close });
-        } else {
-            set({ candles: [] });
-        }
+    setCandles: (incoming) => {
+        set((s) => {
+            if (incoming.length === 0) return { candles: [] };
+
+            if (s.candles.length === 0) {
+                const last = incoming[incoming.length - 1];
+                return { candles: [...incoming], lastPrice: last.close };
+            }
+
+            const existingMap = new Map(s.candles.map(c => [c.time, c]));
+            for (const c of incoming) {
+                existingMap.set(c.time, c);
+            }
+            const merged = Array.from(existingMap.values()).sort((a, b) => a.time - b.time);
+
+            const trimmed = merged.slice(-1500);
+            return { candles: trimmed, lastPrice: trimmed[trimmed.length - 1].close };
+        });
     },
     addCandle: (candle) =>
         set((s) => {
@@ -300,8 +321,46 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             return { candles: newCandles, lastPrice: candle.close };
         }),
 
+    // —— Aggregated ——
+    showAggregated: localStorage.getItem('terminus_show_aggregated') === 'true',
+    setShowAggregated: (v) => {
+        localStorage.setItem('terminus_show_aggregated', String(v));
+        set({ showAggregated: v });
+    },
+    aggregatedCandles: [],
+    setAggregatedCandles: (incoming) => set(s => {
+        if (incoming.length === 0) return { aggregatedCandles: [] };
+        if (s.aggregatedCandles.length === 0) return { aggregatedCandles: incoming };
+
+        const existingMap = new Map(s.aggregatedCandles.map(c => [c.time, c]));
+        for (const c of incoming) {
+            existingMap.set(c.time, c);
+        }
+        const merged = Array.from(existingMap.values()).sort((a, b) => a.time - b.time);
+        return { aggregatedCandles: merged.slice(-1500) };
+    }),
+    addAggregatedCandle: (candle) => set(s => {
+        if (s.aggregatedCandles.length > 0 && s.aggregatedCandles[s.aggregatedCandles.length - 1].time === candle.time) {
+            return s;
+        }
+        const newCandles = [...s.aggregatedCandles, candle];
+        if (newCandles.length > 1500) newCandles.shift();
+        return { aggregatedCandles: newCandles };
+    }),
+    updateLastAggregatedCandle: (candle) => set(s => {
+        const newCandles = [...s.aggregatedCandles];
+        if (newCandles.length > 0) {
+            newCandles[newCandles.length - 1] = candle;
+        } else {
+            newCandles.push(candle);
+        }
+        return { aggregatedCandles: newCandles };
+    }),
+
     orderbook: null,
     setOrderbook: (ob) => set({ orderbook: ob }),
+    deepOrderbook: null,
+    setDeepOrderbook: (ob) => set({ deepOrderbook: ob }),
 
     options: null,
     setOptions: (o) => set({ options: o }),
@@ -383,16 +442,43 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     confirmedSweeps: [],
     setConfirmedSweeps: (s) => set({ confirmedSweeps: s }),
 
-    htfCandles: {},
-    setHtfCandles: (tf, candles) => set(s => ({
-        htfCandles: { ...s.htfCandles, [tf]: candles }
-    })),
+    htfCandles: (() => {
+        if (typeof window === 'undefined') return {};
+        try {
+            return {
+                '4h': JSON.parse(localStorage.getItem('terminus_htf_4h_last') || '[]'),
+                '1d': JSON.parse(localStorage.getItem('terminus_htf_1d_last') || '[]'),
+                '1w': JSON.parse(localStorage.getItem('terminus_htf_1w_last') || '[]'),
+            };
+        } catch (e) {
+            return {};
+        }
+    })() as Record<string, CandleData[]>,
+    setHtfCandles: (tf, incoming) => set(s => {
+        const existing = s.htfCandles[tf] || [];
+        if (existing.length === 0) {
+            localStorage.setItem(`terminus_htf_${tf}_last`, JSON.stringify(incoming));
+            return { htfCandles: { ...s.htfCandles, [tf]: incoming } };
+        }
+        const existingMap = new Map(existing.map((c: any) => [c.time, c]));
+        for (const c of incoming) {
+            existingMap.set(c.time, c);
+        }
+        const merged = Array.from(existingMap.values()).sort((a: any, b: any) => a.time - b.time);
+
+        // Save to cache for optimistic UI
+        localStorage.setItem(`terminus_htf_${tf}_last`, JSON.stringify(merged.slice(-500)));
+
+        return { htfCandles: { ...s.htfCandles, [tf]: merged.slice(-500) } };
+    }),
     addHtfCandle: (tf, candle) => set(s => {
         const existing = s.htfCandles[tf] ?? [];
         const last = existing[existing.length - 1];
         const updated = last?.time === candle.time
             ? [...existing.slice(0, -1), candle]
             : [...existing, candle].slice(-500);
+
+        localStorage.setItem(`terminus_htf_${tf}_last`, JSON.stringify(updated));
         return { htfCandles: { ...s.htfCandles, [tf]: updated } };
     }),
     htfBias: {},

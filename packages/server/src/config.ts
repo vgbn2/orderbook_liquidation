@@ -17,7 +17,7 @@ const envSchema = z.object({
 
     // Server
     PORT: z.coerce.number().default(8080),
-    HOST: z.string().default('0.0.0.0'),
+    HOST: z.string().default('127.0.0.1'),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
     // Exchange API keys
@@ -34,6 +34,9 @@ const envSchema = z.object({
     ENABLE_MEXC: z.coerce.boolean().default(true),
     ENABLE_BITGET: z.coerce.boolean().default(true),
     ENABLE_GATEIO: z.coerce.boolean().default(true),
+    // Security
+    JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
+    TERMINUS_API_KEY: z.string().min(16, "TERMINUS_API_KEY must be at least 16 characters"),
 });
 
 export const config = envSchema.parse(process.env);

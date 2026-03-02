@@ -145,32 +145,80 @@ export class OrderbookEngine {
         };
     }
 
+    private wallAgeMap = new Map<number, number>(); // price -> ticks alive
+
     /**
      * Detect limit walls — price levels with disproportionate qty.
      */
     detectWalls(snapshot: OrderbookSnapshot): { bid_walls: OrderbookWall[]; ask_walls: OrderbookWall[] } {
+        const allLevels = [...snapshot.bids, ...snapshot.asks];
+        if (allLevels.length === 0) return { bid_walls: [], ask_walls: [] };
+
+        // Median qty
+        const sortedQtys = allLevels.map(l => l.qty).sort((a, b) => a - b);
+        const mid = Math.floor(sortedQtys.length / 2);
+        const medianQty = sortedQtys.length % 2 !== 0 ? sortedQtys[mid] : (sortedQtys[mid - 1] + sortedQtys[mid]) / 2;
+        const threshold = medianQty * 4;
+
         const totalBidQty = snapshot.bids.reduce((s, l) => s + l.qty, 0);
         const totalAskQty = snapshot.asks.reduce((s, l) => s + l.qty, 0);
 
-        const bid_walls: OrderbookWall[] = snapshot.bids
-            .filter((l) => (l.qty / totalBidQty) * 100 >= WALL_THRESHOLD_PCT)
-            .map((l) => ({
-                price: l.price,
-                qty: l.qty,
-                pct: (l.qty / totalBidQty) * 100,
-                side: 'bid' as const,
-            }));
+        const rawBids = snapshot.bids.filter(l => l.qty > threshold);
+        const rawAsks = snapshot.asks.filter(l => l.qty > threshold);
 
-        const ask_walls: OrderbookWall[] = snapshot.asks
-            .filter((l) => (l.qty / totalAskQty) * 100 >= WALL_THRESHOLD_PCT)
-            .map((l) => ({
-                price: l.price,
-                qty: l.qty,
-                pct: (l.qty / totalAskQty) * 100,
-                side: 'ask' as const,
-            }));
+        // Update age map
+        const currentWallPrices = new Set([...rawBids, ...rawAsks].map(w => w.price));
+        for (const [price, age] of this.wallAgeMap.entries()) {
+            if (!currentWallPrices.has(price)) {
+                this.wallAgeMap.delete(price); // Wall pulled
+            } else {
+                this.wallAgeMap.set(price, age + 1); // persists
+            }
+        }
+        for (const price of currentWallPrices) {
+            if (!this.wallAgeMap.has(price)) {
+                this.wallAgeMap.set(price, 1);
+            }
+        }
 
-        return { bid_walls, ask_walls };
+        const processWalls = (walls: OrderbookLevel[], side: 'bid' | 'ask', totalQty: number): OrderbookWall[] => {
+            return walls.map(w => {
+                let score = 0;
+
+                // Base score: size multiple over median (cap at 5)
+                const multiple = w.qty / (medianQty || 1);
+                score += Math.min(multiple / 2, 5);
+
+                // Persistence score (cap at 4)
+                const age = this.wallAgeMap.get(w.price) || 1;
+                score += Math.min(age / 10, 4);
+
+                // Round number proximity (2 points)
+                const nearest100 = Math.round(w.price / 100) * 100;
+                if (nearest100 > 0) {
+                    const distancePct = Math.abs(w.price - nearest100) / w.price;
+                    if (distancePct <= 0.001) score += 2;
+                }
+
+                let classification: 'MINOR' | 'SIGNIFICANT' | 'INSTITUTIONAL' = 'MINOR';
+                if (score > 8) classification = 'INSTITUTIONAL';
+                else if (score > 4) classification = 'SIGNIFICANT';
+
+                return {
+                    price: w.price,
+                    qty: w.qty,
+                    pct: (w.qty / (totalQty || 1)) * 100,
+                    score,
+                    classification,
+                    side
+                };
+            }).filter(w => w.score > 3).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 10);
+        };
+
+        return {
+            bid_walls: processWalls(rawBids, 'bid', totalBidQty),
+            ask_walls: processWalls(rawAsks, 'ask', totalAskQty)
+        };
     }
 
     /**

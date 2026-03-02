@@ -125,5 +125,29 @@ export async function runMigrations(): Promise<void> {
     SELECT create_hypertable('big_trades', 'time', if_not_exists => TRUE);
   `);
 
-  logger.info('Migrations complete — 7 hypertables ready');
+  // ── Aggregated VWAP Candles ─────────────────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS aggregated_candles (
+      time          TIMESTAMPTZ NOT NULL,
+      symbol        TEXT NOT NULL,
+      interval_sec  INTEGER NOT NULL,
+      open          DOUBLE PRECISION NOT NULL,
+      high          DOUBLE PRECISION NOT NULL,
+      low           DOUBLE PRECISION NOT NULL,
+      close         DOUBLE PRECISION NOT NULL,
+      volume        DOUBLE PRECISION NOT NULL DEFAULT 0,
+      quote_volume  DOUBLE PRECISION NOT NULL DEFAULT 0,
+      vwap          DOUBLE PRECISION NOT NULL,
+      trade_count   INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  await query(`
+    SELECT create_hypertable('aggregated_candles', 'time', if_not_exists => TRUE);
+  `);
+  await query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_agg_candles_unique
+    ON aggregated_candles (symbol, interval_sec, time DESC);
+  `);
+
+  logger.info('Migrations complete — 8 hypertables ready');
 }

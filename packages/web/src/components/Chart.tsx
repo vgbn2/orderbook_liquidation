@@ -139,6 +139,10 @@ export function Chart({
     const oiSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
 
     const candles = useMarketStore((s) => s.candles);
+    const aggregatedCandles = useMarketStore((s) => s.aggregatedCandles);
+    const showAggregated = useMarketStore((s) => s.showAggregated);
+    const htfCandles = useMarketStore(s => s.htfCandles);
+    const candlesReady = candles.length > 0 && !!htfCandles['4h']?.length && !!htfCandles['1d']?.length;
     const liquidations = useMarketStore((s) => s.liquidations);
     const fundingRates = useMarketStore((s) => s.fundingRates);
     const openInterest = useMarketStore((s) => s.openInterest);
@@ -150,8 +154,6 @@ export function Chart({
         p1?: { time: number; price: number };
     }>({ started: false });
     const initialLoadRef = useRef(false);
-    const cachedWallsRef = useRef<any[]>([]);
-    const lastWallUpdateRef = useRef<number>(0);
 
     const userHasScrolledRef = useRef(false);
     const initialScrollDoneRef = useRef(false);
@@ -467,10 +469,13 @@ export function Chart({
 
     // ── Update data ────────────────────────────
     useEffect(() => {
-        if (!candleSeriesRef.current || !volumeSeriesRef.current || candles.length === 0)
+        if (!candleSeriesRef.current || !volumeSeriesRef.current)
             return;
 
-        const candleData: CandlestickData<Time>[] = candles.map((c) => ({
+        const displayCandles = showAggregated ? aggregatedCandles : candles;
+        if (displayCandles.length === 0) return;
+
+        const candleData: CandlestickData<Time>[] = displayCandles.map((c) => ({
             time: c.time as Time,
             open: c.open,
             high: c.high,
@@ -478,13 +483,13 @@ export function Chart({
             close: c.close,
         }));
 
-        const volumeData: HistogramData<Time>[] = candles.map((c) => ({
+        const volumeData: HistogramData<Time>[] = displayCandles.map((c) => ({
             time: c.time as Time,
             value: c.volume,
             color: c.close >= c.open ? 'rgba(0,232,122,0.25)' : 'rgba(255,45,78,0.2)',
         }));
 
-        const lineData: LineData<Time>[] = candles.map(c => ({
+        const lineData: LineData<Time>[] = displayCandles.map(c => ({
             time: c.time as Time,
             value: c.close
         }));
@@ -497,7 +502,7 @@ export function Chart({
         // ── Compute CVD (Cumulative Volume Delta) ──
         if (cvdSeriesRef.current) {
             let runningCvd = 0;
-            const cvdData: LineData<Time>[] = candles.map((c: any) => {
+            const cvdData: LineData<Time>[] = displayCandles.map((c: any) => {
                 if (c.cvd !== undefined) {
                     runningCvd = c.cvd;
                 } else {
@@ -516,14 +521,14 @@ export function Chart({
                 const formatted = htfData.map(d => ({
                     time: d.time as Time,
                     value: d.value
-                })).filter(d => candles.some(c => c.time === d.time)); // Only show data that matches current chart range
+                })).filter(d => displayCandles.some(c => c.time === d.time)); // Only show data that matches current chart range
                 cvdHTFSeriesRef.current.setData(formatted);
             }
         }
 
         // ── Compute Delta (per-bar volume delta) ──
         if (deltaSeriesRef.current) {
-            const deltaData: HistogramData<Time>[] = candles.map((c) => {
+            const deltaData: HistogramData<Time>[] = displayCandles.map((c) => {
                 const d = c.close >= c.open ? c.volume : -c.volume;
                 return {
                     time: c.time as Time,
@@ -536,15 +541,30 @@ export function Chart({
 
         // ── Compute VWAP ──
         if (vwapSeriesRef.current) {
-            let cumPV = 0;
-            let cumV = 0;
-            const vwapData: LineData<Time>[] = candles.map((c) => {
-                const tp = (c.high + c.low + c.close) / 3;
-                cumPV += tp * c.volume;
-                cumV += c.volume;
-                return { time: c.time as Time, value: cumV > 0 ? cumPV / cumV : tp };
-            });
-            vwapSeriesRef.current.setData(vwapData);
+            if (showAggregated) {
+                // Use pre-computed VWAP from server if available
+                const vwapData: LineData<Time>[] = displayCandles
+                    .filter(c => (c as any).vwap != null)
+                    .map((c: any) => ({
+                        time: c.time as Time,
+                        value: c.vwap
+                    }));
+                if (vwapData.length > 0) {
+                    vwapSeriesRef.current.setData(vwapData);
+                    vwapSeriesRef.current.applyOptions({ visible: true });
+                }
+            } else {
+                let cumPV = 0;
+                let cumV = 0;
+                const vwapData: LineData<Time>[] = displayCandles.map((c) => {
+                    const tp = (c.high + c.low + c.close) / 3;
+                    cumPV += tp * c.volume;
+                    cumV += c.volume;
+                    return { time: c.time as Time, value: cumV > 0 ? cumPV / cumV : tp };
+                });
+                vwapSeriesRef.current.setData(vwapData);
+                vwapSeriesRef.current.applyOptions({ visible: activeIndicators.has('vwap') });
+            }
         }
 
         // Auto-scroll
@@ -562,13 +582,13 @@ export function Chart({
         }
 
         // ── Compute RSI ──
-        if (rsiSeriesRef.current && candles.length > 14) {
+        if (rsiSeriesRef.current && displayCandles.length > 14) {
             const rsiData: LineData<Time>[] = [];
 
             // Seed with simple average of first 14 changes
             let gains = 0, losses = 0;
             for (let i = 1; i <= 14; i++) {
-                const diff = candles[i].close - candles[i - 1].close;
+                const diff = displayCandles[i].close - displayCandles[i - 1].close;
                 if (diff > 0) gains += diff;
                 else losses += Math.abs(diff);
             }
@@ -576,8 +596,8 @@ export function Chart({
             let avgGain = gains / 14;
             let avgLoss = losses / 14;
 
-            for (let i = 15; i < candles.length; i++) {
-                const diff = candles[i].close - candles[i - 1].close;
+            for (let i = 15; i < displayCandles.length; i++) {
+                const diff = displayCandles[i].close - displayCandles[i - 1].close;
                 const gain = Math.max(diff, 0);
                 const loss = Math.max(-diff, 0);
 
@@ -587,14 +607,14 @@ export function Chart({
 
                 const rs = avgLoss === 0 ? Infinity : avgGain / avgLoss;
                 const rsi = 100 - (100 / (1 + rs));
-                rsiData.push({ time: candles[i].time as Time, value: rsi });
+                rsiData.push({ time: displayCandles[i].time as Time, value: rsi });
             }
             rsiSeriesRef.current.setData(rsiData);
         }
 
         // ── Compute MACD ──
-        if (macdLineRef.current && macdSignalRef.current && macdHistRef.current && candles.length > 26) {
-            const closePrices = candles.map(c => c.close);
+        if (macdLineRef.current && macdSignalRef.current && macdHistRef.current && displayCandles.length > 26) {
+            const closePrices = displayCandles.map(c => c.close);
             const ema = (data: number[], period: number) => {
                 const k = 2 / (period + 1);
                 const result = [data[0]];
@@ -612,8 +632,8 @@ export function Chart({
             const signalData: LineData<Time>[] = [];
             const histData: HistogramData<Time>[] = [];
 
-            for (let i = 26; i < candles.length; i++) {
-                const t = candles[i].time as Time;
+            for (let i = 26; i < displayCandles.length; i++) {
+                const t = displayCandles[i].time as Time;
                 const m = macdValues[i];
                 const s = signalValues[i];
                 macdData.push({ time: t, value: m });
@@ -628,7 +648,7 @@ export function Chart({
             macdSignalRef.current.setData(signalData);
             macdHistRef.current.setData(histData);
         }
-    }, [candles, activeIndicators]);
+    }, [candles, aggregatedCandles, showAggregated, activeIndicators]);
 
     // ── Backtest Markers ──
     useEffect(() => {
@@ -1045,67 +1065,122 @@ export function Chart({
             }
         }
 
-        // ── Resting Liquidity overlay ──────────────────
+        // ── Unified Market Depth (Resting Liquidity) ──────────────────
         if (activeIndicators.has('resting_liq') && INDICATOR_RELEVANCE['resting_liq'].includes(timeframe) && candleSeriesRef.current) {
-            // Retrieve latest orderbook on demand to decouple React renders
-            const currentOrderbook = useMarketStore.getState().orderbook;
-            const currentCandleTime = candles[candles.length - 1]?.time || 0;
-
-            // Fix: Only recalculate on candle_close (or if empty)
-            if ((currentCandleTime !== lastWallUpdateRef.current || cachedWallsRef.current.length === 0) && currentOrderbook) {
-                lastWallUpdateRef.current = currentCandleTime as number;
-                cachedWallsRef.current = [
-                    ...(currentOrderbook.walls?.bid_walls ?? []).map((w: any) => ({ ...w, side: 'bid' as const })),
-                    ...(currentOrderbook.walls?.ask_walls ?? []).map((w: any) => ({ ...w, side: 'ask' as const })),
-                ];
-            }
-
-            const MIN_THICKNESS = 1;
-            const MAX_THICKNESS = 6;
-            const allWalls = cachedWallsRef.current;
-            const maxWallQty = Math.max(...allWalls.map((w: any) => w.qty), 1);
+            const state = useMarketStore.getState();
+            const currentOrderbook = state.orderbook;
+            const deepOrderbook = state.deepOrderbook;
+            const liquidations = state.liquidations;
             const currentPrice = candles[candles.length - 1]?.close || 0;
 
-            for (const wall of allWalls) {
-                // Invalidate level if price closed through it
-                if (wall.side === 'bid' && currentPrice < wall.price) continue;
-                if (wall.side === 'ask' && currentPrice > wall.price) continue;
+            // Zone 3: Model Heatmap (Low Res, 0.3 Opacity, from liquidations engine)
+            if (liquidations && Array.isArray(liquidations.heatmap) && liquidations.heatmap.length > 0) {
+                const maxTotal = Math.max(...liquidations.heatmap.map((h: any) => h.total), 1);
+                for (const node of liquidations.heatmap) {
+                    if (!node || node.total < maxTotal * 0.1) continue; // Noise filter
 
-                const y = candleSeriesRef.current.priceToCoordinate(wall.price);
-                if (y == null) continue;
-                const yy = y as number;
+                    const y = candleSeriesRef.current.priceToCoordinate(node.price);
+                    if (y == null) continue;
+                    const yy = y as number;
 
-                const thickness = Math.min(Math.max(
-                    (wall.qty / maxWallQty) * MAX_THICKNESS,
-                    MIN_THICKNESS
-                ), MAX_THICKNESS);
+                    const thickness = 2; // Fixed thickness for heatmap bands
+                    const intensity = node.total / maxTotal;
+                    // Determine dominant side
+                    const isLongCrowded = node.long_liq_usd > node.short_liq_usd;
+                    const color = isLongCrowded
+                        ? `rgba(255, 45, 78, ${0.1 + intensity * 0.2})` // Red for longs getting squeezed (sells)
+                        : `rgba(0, 230, 118, ${0.1 + intensity * 0.2})`; // Green for shorts getting squeezed (buys)
 
-                // Pulse major walls
-                const isMajor = (wall.qty / maxWallQty) > 0.8;
-                const pulse = isMajor ? Math.sin(Date.now() / 200) * 0.2 : 0;
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = thickness;
+                    ctx.setLineDash([]);
+                    ctx.beginPath();
+                    ctx.moveTo(0, yy);
+                    ctx.lineTo(cw, yy);
+                    ctx.stroke();
+                }
+            }
 
-                const color = wall.side === 'bid'
-                    ? `rgba(0, 230, 118, ${0.3 + (wall.qty / maxWallQty) * 0.5 + pulse})`
-                    : `rgba(255, 45, 78, ${0.3 + (wall.qty / maxWallQty) * 0.5 + pulse})`;
+            // Zone 2: Deep Book (Med Res, 0.6 Opacity, from 1000-level snapshot)
+            if (deepOrderbook) {
+                const processDeep = (levels: { price: number, qty: number }[] = [], isBid: boolean) => {
+                    if (!Array.isArray(levels) || levels.length === 0) return;
 
-                ctx.strokeStyle = color;
-                ctx.lineWidth = thickness;
-                ctx.setLineDash([3, 2]);
-                ctx.beginPath();
-                ctx.moveTo(0, yy);
-                ctx.lineTo(cw, yy);
-                ctx.stroke();
-                ctx.setLineDash([]);
+                    const sorted = [...levels].sort((a, b) => b.qty - a.qty).slice(0, 30); // Top 30 deep walls
+                    const maxQty = Math.max(...sorted.map(s => s.qty), 1);
 
-                // Label updates on tick
-                const distPct = Math.abs((wall.price - currentPrice) / currentPrice * 100);
+                    for (const level of sorted) {
+                        if (!level || typeof level.price !== 'number') continue;
+                        const y = candleSeriesRef.current!.priceToCoordinate(level.price);
+                        if (y == null) continue;
 
-                ctx.font = '8px JetBrains Mono, monospace';
-                ctx.fillStyle = color;
-                ctx.fillText(
-                    `${wall.qty.toFixed(2)} BTC(${distPct.toFixed(2)} %)`,
-                    cw - 90, yy - 3
-                );
+                        const intensity = level.qty / maxQty;
+                        if (intensity < 0.2) continue; // skip noise
+
+                        const color = isBid
+                            ? `rgba(0, 230, 118, ${0.2 + intensity * 0.4})`
+                            : `rgba(255, 45, 78, ${0.2 + intensity * 0.4})`;
+
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = Math.max(1, intensity * 3);
+                        ctx.setLineDash([4, 4]); // Dashed for deep walls
+                        ctx.beginPath();
+                        ctx.moveTo(0, y as number);
+                        ctx.lineTo(cw, y as number);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                };
+                processDeep(deepOrderbook.bids || [], true);
+                processDeep(deepOrderbook.asks || [], false);
+            }
+
+            // Zone 1: Live Book Walls (High Res, 1.0 Opacity, from 100ms aggregated)
+            if (currentOrderbook && currentOrderbook.walls) {
+                const allWalls = [
+                    ...(currentOrderbook.walls.bid_walls ?? []).map((w: any) => ({ ...w, side: 'bid' as const })),
+                    ...(currentOrderbook.walls.ask_walls ?? []).map((w: any) => ({ ...w, side: 'ask' as const })),
+                ];
+
+                const maxWallQty = Math.max(...allWalls.map((w: any) => w.qty), 1);
+
+                for (const wall of allWalls) {
+                    if (wall.side === 'bid' && currentPrice < wall.price) continue;
+                    if (wall.side === 'ask' && currentPrice > wall.price) continue;
+
+                    const y = candleSeriesRef.current.priceToCoordinate(wall.price);
+                    if (y == null) continue;
+                    const yy = y as number;
+
+                    const isMajor = (wall.qty / maxWallQty) > 0.8;
+                    const pulse = isMajor ? Math.sin(Date.now() / 200) * 0.2 : 0;
+                    const thickness = Math.min(Math.max((wall.qty / maxWallQty) * 6, 1), 6);
+
+                    const color = wall.side === 'bid'
+                        ? `rgba(0, 230, 118, ${0.6 + (wall.qty / maxWallQty) * 0.4 + pulse})`
+                        : `rgba(255, 45, 78, ${0.6 + (wall.qty / maxWallQty) * 0.4 + pulse})`;
+
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = thickness;
+                    ctx.beginPath();
+                    ctx.moveTo(0, yy);
+                    ctx.lineTo(cw, yy);
+                    ctx.stroke();
+
+                    // Text Label
+                    const distPct = Math.abs((wall.price - currentPrice) / currentPrice * 100);
+                    ctx.font = '9px JetBrains Mono, monospace';
+                    ctx.fillStyle = color;
+
+                    // Show classification if available
+                    const rankStr = wall.classification === 'INSTITUTIONAL' ? '👑' :
+                        wall.classification === 'SIGNIFICANT' ? '⚡' : '';
+
+                    ctx.fillText(
+                        `${rankStr} ${wall.qty.toFixed(2)} (${distPct.toFixed(2)}%)`,
+                        cw - 110, yy - 4
+                    );
+                }
             }
         }
 
@@ -1322,6 +1397,11 @@ export function Chart({
 
             {/* ── Chart + Canvas Overlay ────────────── */}
             <div className="chart-container-wrap">
+                {!candlesReady && (
+                    <div style={{ position: 'absolute', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(10, 14, 23, 0.8)' }}>
+                        <div style={{ color: '#00e87a', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '2px' }}>SYNCING HISTORICAL DATABASE...</div>
+                    </div>
+                )}
                 <PerfStats />
                 <div ref={containerRef} className="chart-container" />
                 <canvas

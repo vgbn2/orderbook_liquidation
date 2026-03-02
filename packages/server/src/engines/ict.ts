@@ -1,5 +1,6 @@
 import { logger } from '../logger.js';
 import { clientHub } from '../ws/client-hub.js';
+import { redis } from '../db/redis.js';
 import type { Candle } from '../adapters/types.js';
 
 // ── Types ──────────────────────────────────────────────────
@@ -60,70 +61,97 @@ const SWEEP_REVERSAL_CLOSE = 0.001;
 const MIN_LIQ_BACKING_USD = 500_000;
 const SWING_LOOKBACK = 5;
 
+interface MarketState {
+    candles: Candle[];
+    fvgs: FVG[];
+    orderBlocks: OrderBlock[];
+    swingHighs: { price: number; time: number; idx: number }[];
+    swingLows: { price: number; time: number; idx: number }[];
+    pendingSweeps: PendingSweep[];
+    confirmedSweeps: ConfirmedSweep[];
+    lastBroadcast: number;
+}
+
 export class PreciseIctEngine {
-    private candles: Candle[] = [];
-    private fvgs: FVG[] = [];
-    private orderBlocks: OrderBlock[] = [];
-    private swingHighs: { price: number; time: number; idx: number }[] = [];
-    private swingLows: { price: number; time: number; idx: number }[] = [];
-    private pendingSweeps: PendingSweep[] = [];
-    private confirmedSweeps: ConfirmedSweep[] = [];
+    private states = new Map<string, MarketState>();
     private liqHeatmap: any[] = [];
-    private lastBroadcast = 0;
+
+    private getOrCreateState(symbol: string, interval: string): MarketState {
+        const key = `${symbol.toUpperCase()}:${interval}`;
+        let state = this.states.get(key);
+        if (!state) {
+            state = {
+                candles: [],
+                fvgs: [],
+                orderBlocks: [],
+                swingHighs: [],
+                swingLows: [],
+                pendingSweeps: [],
+                confirmedSweeps: [],
+                lastBroadcast: 0
+            };
+            this.states.set(key, state);
+        }
+        return state;
+    }
 
     setLiqHeatmap(heatmap: any[]): void {
         this.liqHeatmap = heatmap;
     }
 
-    onCandle(candle: Candle): void {
-        this.candles.push(candle);
-        if (this.candles.length > 500) this.candles = this.candles.slice(-500);
-        if (this.candles.length < SWING_LOOKBACK * 2 + 1) return;
+    onCandle(candle: Candle & { symbol?: string; interval?: string }): void {
+        const symbol = candle.symbol || 'UNKNOWN';
+        const interval = candle.interval || '1m';
+        const state = this.getOrCreateState(symbol, interval);
 
-        this.updateSwings();
-        this.detectFVGs();
-        this.detectOrderBlocks();
-        this.updateFVGFills();
-        this.updateOBStatus();
-        this.checkForNewSweeps(candle);
-        this.tickPendingSweeps(candle);
+        state.candles.push(candle);
+        if (state.candles.length > 500) state.candles = state.candles.slice(-500);
+        if (state.candles.length < SWING_LOOKBACK * 2 + 1) return;
+
+        this.updateSwings(state);
+        this.detectFVGs(state);
+        this.detectOrderBlocks(state);
+        this.updateFVGFills(state);
+        this.updateOBStatus(state);
+        this.checkForNewSweeps(state, candle);
+        this.tickPendingSweeps(state, candle);
 
         // Broadcast structural updates periodically
-        if (Date.now() - this.lastBroadcast > 30_000) {
-            this.lastBroadcast = Date.now();
-            this.broadcast();
+        if (Date.now() - state.lastBroadcast > 5_000) {
+            state.lastBroadcast = Date.now();
+            this.broadcast(symbol, interval, state);
         }
     }
 
-    private updateSwings(): void {
-        const n = this.candles.length;
+    private updateSwings(state: MarketState): void {
+        const n = state.candles.length;
         const checkIdx = n - SWING_LOOKBACK - 1;
-        const c = this.candles[checkIdx];
-        const before = this.candles.slice(checkIdx - SWING_LOOKBACK, checkIdx);
-        const after = this.candles.slice(checkIdx + 1, checkIdx + SWING_LOOKBACK + 1);
+        const c = state.candles[checkIdx];
+        const before = state.candles.slice(checkIdx - SWING_LOOKBACK, checkIdx);
+        const after = state.candles.slice(checkIdx + 1, checkIdx + SWING_LOOKBACK + 1);
 
         const isSwingHigh = before.every(x => x.high <= c.high) && after.every(x => x.high <= c.high);
         const isSwingLow = before.every(x => x.low >= c.low) && after.every(x => x.low >= c.low);
 
         if (isSwingHigh) {
-            this.swingHighs.push({ price: c.high, time: c.time, idx: checkIdx });
-            this.swingHighs = this.swingHighs.slice(-20);
+            state.swingHighs.push({ price: c.high, time: c.time, idx: checkIdx });
+            state.swingHighs = state.swingHighs.slice(-20);
         }
         if (isSwingLow) {
-            this.swingLows.push({ price: c.low, time: c.time, idx: checkIdx });
-            this.swingLows = this.swingLows.slice(-20);
+            state.swingLows.push({ price: c.low, time: c.time, idx: checkIdx });
+            state.swingLows = state.swingLows.slice(-20);
         }
     }
 
-    private detectFVGs(): void {
-        const n = this.candles.length;
-        const [c0, c1, c2] = [this.candles[n - 3], this.candles[n - 2], this.candles[n - 1]];
+    private detectFVGs(state: MarketState): void {
+        const n = state.candles.length;
+        const [c0, c1, c2] = [state.candles[n - 3], state.candles[n - 2], state.candles[n - 1]];
 
         // Bullish FVG
         if (c2.low > c0.high) {
             const size = c2.low - c0.high;
             if (size >= c1.close * 0.0003) {
-                this.fvgs.push({
+                state.fvgs.push({
                     id: `fvg-bull-${c2.time}`,
                     type: 'bullish',
                     top: c2.low,
@@ -140,7 +168,7 @@ export class PreciseIctEngine {
         if (c2.high < c0.low) {
             const size = c0.low - c2.high;
             if (size >= c1.close * 0.0003) {
-                this.fvgs.push({
+                state.fvgs.push({
                     id: `fvg-bear-${c2.time}`,
                     type: 'bearish',
                     top: c0.low,
@@ -152,20 +180,21 @@ export class PreciseIctEngine {
                 });
             }
         }
-        this.fvgs = this.fvgs.filter(f => !f.filled).slice(-50);
+        state.fvgs = state.fvgs.filter(f => !f.filled).slice(-50);
     }
 
-    private detectOrderBlocks(): void {
-        const n = this.candles.length;
-        const c = this.candles[n - 1];
-        const prev3 = this.candles.slice(n - 4, n - 1);
-        const avgBody = this.candles.slice(-10).reduce((s, x) => s + Math.abs(x.close - x.open), 0) / 10;
+    private detectOrderBlocks(state: MarketState): void {
+        const n = state.candles.length;
+        if (n < 4) return;
+        const c = state.candles[n - 1];
+        const prev3 = state.candles.slice(n - 4, n - 1);
+        const avgBody = state.candles.slice(-10).reduce((s, x) => s + Math.abs(x.close - x.open), 0) / 10;
         const displacement = Math.abs(c.close - c.open) > avgBody * 1.5;
 
         if (displacement && c.close > c.open) {
             const lastBearish = [...prev3].reverse().find(x => x.close < x.open);
             if (lastBearish) {
-                this.orderBlocks.push({
+                state.orderBlocks.push({
                     id: `ob-bull-${lastBearish.time}`,
                     type: 'bullish',
                     top: Math.max(lastBearish.open, lastBearish.close),
@@ -179,7 +208,7 @@ export class PreciseIctEngine {
         if (displacement && c.close < c.open) {
             const lastBullish = [...prev3].reverse().find(x => x.close > x.open);
             if (lastBullish) {
-                this.orderBlocks.push({
+                state.orderBlocks.push({
                     id: `ob-bear-${lastBullish.time}`,
                     type: 'bearish',
                     top: Math.max(lastBullish.open, lastBullish.close),
@@ -190,12 +219,12 @@ export class PreciseIctEngine {
                 });
             }
         }
-        this.orderBlocks = this.orderBlocks.filter(ob => !ob.broken).slice(-30);
+        state.orderBlocks = state.orderBlocks.filter(ob => !ob.broken).slice(-30);
     }
 
-    private updateFVGFills(): void {
-        const current = this.candles[this.candles.length - 1];
-        for (const fvg of this.fvgs) {
+    private updateFVGFills(state: MarketState): void {
+        const current = state.candles[state.candles.length - 1];
+        for (const fvg of state.fvgs) {
             if (fvg.type === 'bullish') {
                 if (current.low <= fvg.top && current.high >= fvg.bottom) {
                     const entryDepth = fvg.top - Math.max(current.low, fvg.bottom);
@@ -212,22 +241,22 @@ export class PreciseIctEngine {
         }
     }
 
-    private updateOBStatus(): void {
-        const current = this.candles[this.candles.length - 1];
-        for (const ob of this.orderBlocks) {
+    private updateOBStatus(state: MarketState): void {
+        const current = state.candles[state.candles.length - 1];
+        for (const ob of state.orderBlocks) {
             if (ob.type === 'bullish' && current.close < ob.bottom) ob.broken = true;
             if (ob.type === 'bearish' && current.close > ob.top) ob.broken = true;
         }
     }
 
-    private checkForNewSweeps(candle: Candle): void {
+    private checkForNewSweeps(state: MarketState, candle: Candle): void {
         // BSL
-        for (const swingH of this.swingHighs.slice(-3)) {
+        for (const swingH of state.swingHighs.slice(-3)) {
             const closeAbove = candle.close > swingH.price * (1 + SWEEP_CLOSE_TOLERANCE);
             if (closeAbove) {
-                const alreadyPending = this.pendingSweeps.some(p => p.type === 'BSL' && Math.abs(p.sweptLevel - swingH.price) / swingH.price < 0.002);
+                const alreadyPending = state.pendingSweeps.some(p => p.type === 'BSL' && Math.abs(p.sweptLevel - swingH.price) / swingH.price < 0.002);
                 if (!alreadyPending) {
-                    this.pendingSweeps.push({
+                    state.pendingSweeps.push({
                         type: 'BSL',
                         sweptLevel: swingH.price,
                         sweepCandle: candle,
@@ -240,12 +269,12 @@ export class PreciseIctEngine {
         }
 
         // SSL
-        for (const swingL of this.swingLows.slice(-3)) {
+        for (const swingL of state.swingLows.slice(-3)) {
             const closeBelow = candle.close < swingL.price * (1 - SWEEP_CLOSE_TOLERANCE);
             if (closeBelow) {
-                const alreadyPending = this.pendingSweeps.some(p => p.type === 'SSL' && Math.abs(p.sweptLevel - swingL.price) / swingL.price < 0.002);
+                const alreadyPending = state.pendingSweeps.some(p => p.type === 'SSL' && Math.abs(p.sweptLevel - swingL.price) / swingL.price < 0.002);
                 if (!alreadyPending) {
-                    this.pendingSweeps.push({
+                    state.pendingSweeps.push({
                         type: 'SSL',
                         sweptLevel: swingL.price,
                         sweepCandle: candle,
@@ -258,9 +287,9 @@ export class PreciseIctEngine {
         }
     }
 
-    private tickPendingSweeps(candle: Candle): void {
+    private tickPendingSweeps(state: MarketState, candle: Candle): void {
         const toRemove: number[] = [];
-        this.pendingSweeps.forEach((pending, idx) => {
+        state.pendingSweeps.forEach((pending, idx) => {
             pending.barsElapsed++;
             if (pending.barsElapsed > SWEEP_REVERSAL_BARS) {
                 toRemove.push(idx);
@@ -269,20 +298,20 @@ export class PreciseIctEngine {
 
             if (pending.type === 'BSL') {
                 if (candle.close < pending.sweptLevel * (1 - SWEEP_REVERSAL_CLOSE)) {
-                    this.confirmSweep(pending, candle);
+                    this.confirmSweep(state, pending, candle);
                     toRemove.push(idx);
                 }
             } else {
                 if (candle.close > pending.sweptLevel * (1 + SWEEP_REVERSAL_CLOSE)) {
-                    this.confirmSweep(pending, candle);
+                    this.confirmSweep(state, pending, candle);
                     toRemove.push(idx);
                 }
             }
         });
-        this.pendingSweeps = this.pendingSweeps.filter((_, i) => !toRemove.includes(i));
+        state.pendingSweeps = state.pendingSweeps.filter((_, i) => !toRemove.includes(i));
     }
 
-    private confirmSweep(pending: PendingSweep, reversalCandle: Candle): void {
+    private confirmSweep(state: MarketState, pending: PendingSweep, reversalCandle: Candle): void {
         const confidence = this.scoreConfidence(pending);
         const sweep: ConfirmedSweep = {
             id: `sweep-${pending.type}-${reversalCandle.time}`,
@@ -296,8 +325,8 @@ export class PreciseIctEngine {
             confidence,
         };
 
-        this.confirmedSweeps.push(sweep);
-        if (this.confirmedSweeps.length > 20) this.confirmedSweeps.shift();
+        state.confirmedSweeps.push(sweep);
+        if (state.confirmedSweeps.length > 20) state.confirmedSweeps.shift();
 
         const dir = pending.type === 'BSL' ? 'BEARISH' : 'BULLISH';
         const liqStr = sweep.liqBacking?.isSignificant ? ` [$${(sweep.liqBacking.usdAtLevel / 1e6).toFixed(1)}M liq]` : '';
@@ -352,25 +381,29 @@ export class PreciseIctEngine {
         };
     }
 
-    private broadcast(): void {
-        clientHub.broadcast('ict.data' as any, {
-            fvgs: this.fvgs.filter(f => !f.filled),
-            orderBlocks: this.orderBlocks,
-            sweeps: this.confirmedSweeps.slice(-10),
-            swingHighs: this.swingHighs,
-            swingLows: this.swingLows,
-        });
+    private broadcast(symbol: string, interval: string, state: MarketState): void {
+        const payload = {
+            fvgs: state.fvgs.filter(f => !f.filled),
+            orderBlocks: state.orderBlocks,
+            sweeps: state.confirmedSweeps.slice(-10),
+            swingHighs: state.swingHighs,
+            swingLows: state.swingLows,
+        };
+        const topic = `ict.data.${symbol.toUpperCase()}.${interval}`;
+        clientHub.broadcast(topic as any, payload);
+        redis.set(topic, JSON.stringify(payload), 'EX', 120).catch(err => logger.error({ err }, 'Failed to cache ICT data'));
     }
 
-    getSweeps(): ConfirmedSweep[] {
-        return this.confirmedSweeps;
+    getSweeps(symbol: string, interval: string): ConfirmedSweep[] {
+        return this.getOrCreateState(symbol, interval).confirmedSweeps;
     }
 
-    getState() {
+    getState(symbol: string, interval: string) {
+        const state = this.getOrCreateState(symbol, interval);
         return {
-            fvgs: this.fvgs,
-            orderBlocks: this.orderBlocks,
-            sweeps: this.confirmedSweeps,
+            fvgs: state.fvgs,
+            orderBlocks: state.orderBlocks,
+            sweeps: state.confirmedSweeps,
         };
     }
 }

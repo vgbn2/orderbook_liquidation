@@ -35,6 +35,7 @@ let globalSymbol = 'BTCUSDT';
 
 const app = Fastify({
     logger: false, // We use our own pino logger
+    trustProxy: false // Explicitly disable proxy trust to prevent HIGH-2 (IP Spoofing)
 });
 
 async function start(): Promise<void> {
@@ -114,12 +115,39 @@ async function start(): Promise<void> {
         startGateio(globalSymbol);
     }
 
-    // Fetch initial historical candles
-    const historicalCandles = await binanceAdapter.fetchKlines(globalSymbol, '1m', 500);
-    if (historicalCandles.length > 0) {
-        await redis.set(`candles:${globalSymbol}:1m`, JSON.stringify(historicalCandles), 'EX', 300);
-        logger.info({ count: historicalCandles.length }, 'Historical candles cached');
+    // Fetch initial historical candles for all timeframes
+    const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
+    let initialCandles: any[] = [];
+    for (const tf of timeframes) {
+        try {
+            const candles = await binanceAdapter.fetchKlines(globalSymbol, tf, 500);
+            if (candles.length > 0) {
+                await redis.set(`candles:${globalSymbol}:${tf}`, JSON.stringify(candles), 'EX', 3600);
+                logger.info({ count: candles.length, timeframe: tf }, 'Historical candles cached');
+                if (tf === '1m') initialCandles = candles;
+            }
+        } catch (err) {
+            logger.error({ err, tf }, 'Failed to fetch historical candles');
+        }
     }
+
+    // Keep 1m fresh via fetchKlines merges
+    setInterval(async () => {
+        try {
+            const latest = await binanceAdapter.fetchKlines(globalSymbol, '1m', 10);
+            const existingStr = await redis.get(`candles:${globalSymbol}:1m`);
+            let existing: any[] = existingStr ? JSON.parse(existingStr) : [];
+
+            const existingMap = new Map<number, any>(existing.map(c => [c.time, c]));
+            for (const c of latest) {
+                existingMap.set(c.time, c);
+            }
+            const merged = Array.from(existingMap.values()).sort((a, b) => a.time - b.time);
+            await redis.set(`candles:${globalSymbol}:1m`, JSON.stringify(merged), 'EX', 3600);
+        } catch (err) {
+            logger.error({ err }, 'Failed to refresh 1m candles');
+        }
+    }, 60_000);
 
     // Connect orderbook depth stream
     logger.info('Connecting to Binance orderbook depth...');
@@ -135,14 +163,12 @@ async function start(): Promise<void> {
     // Start Quant Engine (macro analysis — runs every 1hr)
     quantEngine.start();
 
-    // Init alerts engine spot
-    alertsEngine.setSpot(historicalCandles[historicalCandles.length - 1]?.close || 95000);
-
     // ── Options engine (simulated in dev, Deribit in prod) ──
-    const latestPrice = historicalCandles.length > 0
-        ? historicalCandles[historicalCandles.length - 1].close
+    const latestPrice = initialCandles.length > 0
+        ? initialCandles[initialCandles.length - 1].close
         : 95000;
     optionsEngine.setSpot(latestPrice);
+    alertsEngine.setSpot(latestPrice);
     optionsEngine.loadChain(generateSimulatedChain(latestPrice));
     optionsEngine.startBroadcast();
     logger.info('Options analytics engine started');
@@ -250,8 +276,16 @@ async function start(): Promise<void> {
         }).catch(() => { });
     }, 4_000);
 
+    const SYMBOL_WHITELIST = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'LINKUSDT', 'ADAUSDT'];
+    const LAST_SYMBOL_SWITCH = new Map<string, number>();
+
     // ── Health endpoint ───────────────────────────
-    app.get('/health', async (_req, reply) => {
+    app.get('/health', async (req, reply) => {
+        // Fix HIGH-4: Authenticate health check
+        const apiKey = req.headers['x-api-key'];
+        if (apiKey !== config.TERMINUS_API_KEY) {
+            return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const db = await dbHealthCheck();
         const rd = await redisHealthCheck();
         const exchanges = wsManager.getAllHealth();
@@ -272,15 +306,18 @@ async function start(): Promise<void> {
         });
     });
 
-    // ── Generate JWT Token for WebSockets ─────────
-    const JWT_SECRET = process.env.JWT_SECRET || 'terminus-local-dev-secret-key';
+    app.post('/api/token', async (req: any, reply) => {
+        // Fix CRIT-1: Authenticate token issuance
+        const apiKey = req.body?.apiKey || req.headers['x-api-key'];
 
-    app.post('/api/token', async (req, reply) => {
-        // In a real app, validate req.body.username / password / apiKey here
-        // For now, we simulate success and return a token
+        if (!apiKey || apiKey !== config.TERMINUS_API_KEY) {
+            logger.warn({ ip: req.ip }, 'Unauthorized attempt to fetch JWT');
+            return reply.code(401).send({ error: 'Invalid API Key' });
+        }
+
         const token = jwt.sign(
             { role: 'pro_trader', access: 'full' },
-            JWT_SECRET,
+            config.JWT_SECRET,
             { expiresIn: '1h' }
         );
         return reply.send({ token });
@@ -300,7 +337,7 @@ async function start(): Promise<void> {
             }
 
             try {
-                jwt.verify(token, JWT_SECRET);
+                jwt.verify(token, config.JWT_SECRET);
             } catch (err) {
                 logger.warn({ ip: req.ip }, 'WebSocket connection rejected: Invalid token');
                 socket.close(4003, 'Forbidden');
@@ -321,12 +358,27 @@ async function start(): Promise<void> {
                         'options.analytics',
                         'liquidations',
                         'confluence',
+                        `ict.data.${globalSymbol}.1m`,
+                        `ict.data.${globalSymbol}.5m`,
+                        `ict.data.${globalSymbol}.15m`,
+                        `ict.data.${globalSymbol}.1h`,
+                        `ict.data.${globalSymbol}.4h`,
+                        `ict.data.${globalSymbol}.1d`,
+                        'liquidations.heatmap'
                     ] as const;
 
                     for (const topic of topics) {
                         const cached = await redis.get(topic);
                         if (cached) {
-                            clientHub.sendToClient(clientId, topic, JSON.parse(cached));
+                            clientHub.sendToClient(clientId, topic as any, JSON.parse(cached));
+                        }
+                    }
+
+                    // Send HTF candles specially
+                    for (const tf of ['4h', '1d'] as const) {
+                        const htfStr = await redis.get(`candles:${globalSymbol}:${tf}`);
+                        if (htfStr) {
+                            clientHub.sendToClient(clientId, `candles.binance.${globalSymbol}.${tf}` as any, JSON.parse(htfStr));
                         }
                     }
                 } catch (err) {
@@ -343,9 +395,33 @@ async function start(): Promise<void> {
                     } else if (msg.action === 'stop_replay') {
                         replayEngine.stopSession(clientId);
                     } else if (msg.action === 'switch_symbol') {
+                        // Fix CRIT-2: Harden switch_symbol
                         const newSymbol = msg.symbol;
+
+                        // 1. Validation
+                        if (!newSymbol || typeof newSymbol !== 'string' || newSymbol.length > 20) {
+                            return;
+                        }
+
+                        const normalized = newSymbol.toUpperCase().trim();
+                        if (!SYMBOL_WHITELIST.includes(normalized)) {
+                            logger.warn({ clientId, normalized }, 'Client attempted to switch to unauthorized symbol');
+                            return;
+                        }
+
+                        // 2. Rate Limiting (per connection)
+                        const now = Date.now();
+                        const lastSwitch = LAST_SYMBOL_SWITCH.get(clientId) || 0;
+                        if (now - lastSwitch < 5000) {
+                            logger.warn({ clientId }, 'Symbol switch throttled');
+                            return;
+                        }
+                        LAST_SYMBOL_SWITCH.set(clientId, now);
+
+                        if (normalized === globalSymbol) return;
+
                         const oldSymbol = globalSymbol;
-                        globalSymbol = newSymbol.toUpperCase();
+                        globalSymbol = normalized;
                         logger.info(`Switching global market to ${globalSymbol}`);
 
                         stopBybit(oldSymbol);

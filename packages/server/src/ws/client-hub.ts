@@ -65,9 +65,6 @@ export class ClientHub {
      * Get IP address from FastifyRequest
      */
     private getIp(req: FastifyRequest): string {
-        const xForwardedFor = req.headers['x-forwarded-for'];
-        if (typeof xForwardedFor === 'string') return xForwardedFor.split(',')[0].trim();
-        if (Array.isArray(xForwardedFor)) return xForwardedFor[0].trim();
         return req.ip || 'unknown';
     }
 

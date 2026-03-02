@@ -1,38 +1,30 @@
 import { logger } from '../logger.js';
 import { clientHub } from '../ws/client-hub.js';
 import { query } from '../db/timescale.js';
+import { redis } from '../db/redis.js';
 import type { LiquidationEvent, LiquidationHeatmapEntry } from '../adapters/types.js';
 
 // ══════════════════════════════════════════════════════════════
-//  Liquidation Engine — Event Tracking + Heatmap
+//  Advanced Liquidity Engine — DIY Heatmap
 // ══════════════════════════════════════════════════════════════
 
-const HEATMAP_BUCKETS = 25;
-const HEATMAP_RANGE_PCT = 0.05;  // ±5% around spot
-const BROADCAST_INTERVAL = 3_000;
+const BROADCAST_INTERVAL = 30_000;
 
 export class LiquidationEngine {
-    private events: LiquidationEvent[] = [];
     private broadcastTimer: ReturnType<typeof setInterval> | null = null;
     private spotPrice = 0;
-    private dirty = false;
+    private symbol = 'BTCUSDT';
+    private lastHeatmap: any = null;
 
     setSpot(price: number): void {
         this.spotPrice = price;
     }
 
     /**
-     * Record a liquidation event.
+     * Record an individual liquidation event (mostly for scatterplot UI bubbles).
+     * The heatmap is now detached from these and modeled mathematically.
      */
     addEvent(event: LiquidationEvent): void {
-        this.events.push(event);
-        // Keep last 500 events in memory
-        if (this.events.length > 500) {
-            this.events = this.events.slice(-500);
-        }
-        this.dirty = true;
-
-        // Persist to TimescaleDB
         query(
             `INSERT INTO liquidation_events (time, exchange, symbol, price, size_usd, side)
        VALUES (to_timestamp($1), $2, $3, $4, $5, $6)
@@ -47,44 +39,8 @@ export class LiquidationEngine {
             ],
         ).catch((err) => logger.error({ err }, 'Failed to persist liquidation'));
 
-        // Broadcast individual event
+        // Broadcast individual event a scatter plot bubble layer
         clientHub.broadcast('liquidations' as any, event);
-    }
-
-    /**
-     * Build estimated liquidation heatmap around current spot.
-     */
-    buildHeatmap(): LiquidationHeatmapEntry[] {
-        if (this.spotPrice === 0) return [];
-
-        const low = this.spotPrice * (1 - HEATMAP_RANGE_PCT);
-        const high = this.spotPrice * (1 + HEATMAP_RANGE_PCT);
-        const step = (high - low) / HEATMAP_BUCKETS;
-
-        const buckets: LiquidationHeatmapEntry[] = [];
-        for (let i = 0; i < HEATMAP_BUCKETS; i++) {
-            const bucketLow = low + i * step;
-            const bucketHigh = bucketLow + step;
-            const price = (bucketLow + bucketHigh) / 2;
-
-            // Sum liquidation volume that falls in this bucket
-            let longLiq = 0;
-            let shortLiq = 0;
-            for (const ev of this.events) {
-                if (ev.price >= bucketLow && ev.price < bucketHigh) {
-                    if (ev.side === 'long') longLiq += ev.size_usd;
-                    else shortLiq += ev.size_usd;
-                }
-            }
-
-            buckets.push({
-                price: Math.round(price),
-                long_liq_usd: longLiq,
-                short_liq_usd: shortLiq,
-                total: longLiq + shortLiq,
-            });
-        }
-        return buckets;
     }
 
     /**
@@ -93,26 +49,110 @@ export class LiquidationEngine {
     startBroadcast(): void {
         if (this.broadcastTimer) return;
 
-        this.broadcastTimer = setInterval(() => {
-            if (!this.dirty && this.events.length === 0) return;
-            this.dirty = false;
-
-            const heatmap = this.buildHeatmap();
-            const totalLiq = heatmap.reduce((s, b) => s + b.total, 0);
-
-            clientHub.broadcast('liquidations.heatmap' as any, {
-                heatmap,
-                total_usd: totalLiq,
-                event_count: this.events.length,
-            });
-        }, BROADCAST_INTERVAL);
+        this.broadcastTimer = setInterval(() => this.computeHeatmap(), BROADCAST_INTERVAL);
+        this.computeHeatmap(); // run immediately
     }
 
     /**
-     * Get current heatmap (for confluence engine).
+     * Fetches Binance context and models the current liquidation heatmap.
      */
-    getHeatmap(): LiquidationHeatmapEntry[] {
-        return this.buildHeatmap();
+    private async computeHeatmap() {
+        if (this.spotPrice === 0) return;
+
+        try {
+            const [oiRes, lsRes, frRes] = await Promise.all([
+                fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${this.symbol}`),
+                fetch(`https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=${this.symbol}&period=5m&limit=1`),
+                fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${this.symbol}`)
+            ]);
+
+            const oiData = await oiRes.json() as any;
+            const lsData = await lsRes.json() as any;
+            const frData = await frRes.json() as any;
+
+            const totalOI = parseFloat(oiData.openInterest || "0");
+            const ls = lsData[0] || { longAccount: "0.5", shortAccount: "0.5" };
+            const longRatio = parseFloat(ls.longAccount);
+            const shortRatio = parseFloat(ls.shortAccount);
+            const fundingRate = parseFloat(frData.lastFundingRate || "0");
+
+            const leverageWeights = [
+                { lev: 100, weight: 0.05 },
+                { lev: 50, weight: 0.15 },
+                { lev: 25, weight: 0.20 },
+                { lev: 20, weight: 0.25 },
+                { lev: 10, weight: 0.20 },
+                { lev: 5, weight: 0.10 },
+                { lev: 3, weight: 0.05 },
+            ];
+
+            const heatmapMap = new Map<number, { long_liq_usd: number; short_liq_usd: number }>();
+            const bucketSize = this.spotPrice * 0.001; // 0.1% bucket resolution
+
+            const addLiq = (price: number, sizeUSD: number, side: 'long' | 'short') => {
+                const bucket = Math.round(price / bucketSize) * bucketSize;
+                const existing = heatmapMap.get(bucket) || { long_liq_usd: 0, short_liq_usd: 0 };
+                if (side === 'long') existing.long_liq_usd += sizeUSD;
+                else existing.short_liq_usd += sizeUSD;
+                heatmapMap.set(bucket, existing);
+            };
+
+            const oiUsd = totalOI * this.spotPrice;
+            const longOiUsd = oiUsd * longRatio;
+            const shortOiUsd = oiUsd * shortRatio;
+
+            for (const tier of leverageWeights) {
+                // Approximate maintenance margin cascade
+                const longLiqPrice = this.spotPrice * (1 - 1 / tier.lev);
+                const shortLiqPrice = this.spotPrice * (1 + 1 / tier.lev);
+
+                // Crowding bias: if high positive funding, longs are crowded relative to shorts
+                const fundingBias = Math.max(1, 1 + (fundingRate * 1000));
+
+                const longTierUsd = longOiUsd * tier.weight * (fundingRate > 0 ? fundingBias : 1);
+                const shortTierUsd = shortOiUsd * tier.weight * (fundingRate < 0 ? fundingBias : 1);
+
+                addLiq(longLiqPrice, longTierUsd, 'long');
+                addLiq(shortLiqPrice, shortTierUsd, 'short');
+            }
+
+            // Apply Gaussian blur (kernel: 0.05, 0.15, 0.60, 0.15, 0.05)
+            const blurredMap = new Map<number, { long_liq_usd: number; short_liq_usd: number }>();
+            const kernel = [0.05, 0.15, 0.6, 0.15, 0.05];
+
+            for (const [bucket, data] of heatmapMap.entries()) {
+                for (let k = -2; k <= 2; k++) {
+                    const targetBucket = bucket + (k * bucketSize);
+                    const weight = kernel[k + 2];
+                    const existing = blurredMap.get(targetBucket) || { long_liq_usd: 0, short_liq_usd: 0 };
+                    existing.long_liq_usd += data.long_liq_usd * weight;
+                    existing.short_liq_usd += data.short_liq_usd * weight;
+                    blurredMap.set(targetBucket, existing);
+                }
+            }
+
+            const heatmap = Array.from(blurredMap.entries()).map(([price, d]) => ({
+                price: Math.round(price),
+                long_liq_usd: Math.round(d.long_liq_usd),
+                short_liq_usd: Math.round(d.short_liq_usd),
+                total: Math.round(d.long_liq_usd + d.short_liq_usd)
+            })).filter(b => b.total > 100_000).sort((a, b) => a.price - b.price);
+
+            const totalLiq = heatmap.reduce((s, b) => s + b.total, 0);
+
+            const payload = {
+                heatmap,
+                total_usd: totalLiq,
+                event_count: 0,
+            };
+
+            this.lastHeatmap = payload.heatmap;
+            clientHub.broadcast('liquidations.heatmap' as any, payload);
+            redis.set('liquidations.heatmap', JSON.stringify(payload), 'EX', 60).catch(err => logger.error({ err }, 'Failed to cache heatmap'));
+
+        } catch (err) {
+            logger.error({ err }, 'Failed to compute Liquidation Heatmap via REST models');
+        }
     }
 
     stop(): void {
@@ -120,6 +160,10 @@ export class LiquidationEngine {
             clearInterval(this.broadcastTimer);
             this.broadcastTimer = null;
         }
+    }
+
+    getHeatmap() {
+        return this.lastHeatmap;
     }
 }
 
@@ -135,7 +179,6 @@ function rnd(min: number, max: number): number {
 
 export function generateSimulatedLiquidation(spot: number): LiquidationEvent {
     const side = Math.random() > 0.5 ? 'long' : 'short';
-    // Longs get liquidated below spot, shorts above
     const offset = side === 'long'
         ? -rnd(0.002, 0.04) * spot
         : rnd(0.002, 0.04) * spot;
@@ -150,9 +193,6 @@ export function generateSimulatedLiquidation(spot: number): LiquidationEvent {
     };
 }
 
-/**
- * Generate a batch of simulated historical liquidations to seed the heatmap.
- */
 export function seedLiquidationHistory(spot: number, count = 100): LiquidationEvent[] {
     const events: LiquidationEvent[] = [];
     for (let i = 0; i < count; i++) {
@@ -162,3 +202,4 @@ export function seedLiquidationHistory(spot: number, count = 100): LiquidationEv
     }
     return events;
 }
+

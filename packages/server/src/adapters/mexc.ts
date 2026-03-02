@@ -1,17 +1,24 @@
 import WebSocket from 'ws';
 import { logger } from '../logger.js';
 import { orderbookEngine } from '../engines/orderbook.js';
+import { aggregatedCandleEngine } from '../engines/AggregatedCandleEngine.js';
 
 let ws: WebSocket | null = null;
 let currentSymbol = 'btcusdt';
+let isStopped = false;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 export function startMexc(symbol: string) {
     currentSymbol = symbol.toLowerCase();
+    isStopped = false;
     connect(currentSymbol);
 }
 
 export function stopMexc(symbol: string) {
+    isStopped = true;
+    stopHeartbeat();
     if (ws) {
+        ws.removeAllListeners();
         ws.close();
         ws = null;
     }
@@ -29,42 +36,70 @@ function connect(symbol: string) {
         ws?.send(JSON.stringify({
             "method": "SUBSCRIPTION",
             "params": [
-                `spot@public.limit.depth.v3.api@${formattedSymbol}@50`
+                `spot@public.limit.depth.v3.api@${formattedSymbol}@50`,
+                `spot@public.deals.v3.api@${formattedSymbol}`
             ]
         }));
+        startHeartbeat();
     });
 
     ws.on('message', (data) => {
         try {
             const msg = JSON.parse(data.toString());
 
-            // Channel subscription confirmation
-            if (msg.id === 0 && msg.msg === 'Ok') return;
-
+            // Handle Orderbook
             if (msg.c === `spot@public.limit.depth.v3.api@${formattedSymbol}@50` && msg.d) {
-                // MEXC doesn't send "snapshots" then "deltas" in this specific channel,
-                // it sends full depth limit snapshots every message
-                // However, we format it as a delta so the engine merges it into the live book cleanly
-
                 orderbookEngine.applyDelta('mexc', {
-                    u: Date.now(), // MEXC doesn't provide strict seq numbers in this feed
+                    u: Date.now(),
                     b: msg.d.bids || [],
                     a: msg.d.asks || [],
-                    isSnapshot: true // Tell engine to replace entirely rather than merge
+                    isSnapshot: true
                 });
             }
-        } catch (e) {
-            // ignore JSON parse errors or malformed data
-        }
+
+            // Handle Trades
+            if (msg.c === `spot@public.deals.v3.api@${formattedSymbol}` && msg.d) {
+                for (const t of msg.d) {
+                    aggregatedCandleEngine.ingestTrade(
+                        'mexc',
+                        symbol,
+                        parseFloat(t.p),
+                        parseFloat(t.v),
+                        t.t
+                    );
+                }
+            }
+        } catch (e) { }
     });
 
     ws.on('close', () => {
-        logger.warn({ symbol }, 'MEXC WS closed, reconnecting in 3s');
-        setTimeout(() => connect(symbol), 3000);
+        stopHeartbeat();
+        if (!isStopped) {
+            logger.warn({ symbol }, 'MEXC WS closed, reconnecting in 3s');
+            setTimeout(() => {
+                if (!isStopped) connect(symbol);
+            }, 3000);
+        }
     });
 
     ws.on('error', (err) => {
         logger.error({ err }, 'MEXC WS error');
         ws?.close();
     });
+}
+
+function startHeartbeat() {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ method: "PING" }));
+        }
+    }, 20_000);
+}
+
+function stopHeartbeat() {
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
 }

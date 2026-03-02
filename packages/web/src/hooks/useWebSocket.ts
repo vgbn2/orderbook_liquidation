@@ -49,20 +49,27 @@ export function useWebSocket() {
     const {
         symbol, setSymbol, timeframe,
         setConnected, addCandle, updateLastCandle, setLastPrice,
-        setOrderbook, setOptions, addOptionTrade, setLiquidations,
+        setOrderbook, setDeepOrderbook, setOptions, addOptionTrade, setLiquidations,
         addLiquidation, setFundingRates, setOpenInterest,
         setVwaf, setConfluenceZones, addTrade,
         setReplayMode, setReplayTimestamp, isReplayMode,
         setQuantSnapshot, setIctData, setConfirmedSweeps,
-        addHtfCandle, setSend
+        addHtfCandle,
+        addAggregatedCandle, updateLastAggregatedCandle,
+        setSend
     } = useMarketStore();
 
     const handleRef = useRef<any>(null);
 
     const connect = useCallback(async () => {
-        // Fetch JWT Token First (Fix 5)
         try {
-            const tokenRes = await fetch('/api/token', { method: 'POST' });
+            const apiKey = import.meta.env.VITE_TERMINUS_API_KEY;
+            const tokenRes = await fetch('/api/token', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': apiKey || ''
+                }
+            });
             if (!tokenRes.ok) throw new Error('Failed to fetch auth token');
 
             const { token } = await tokenRes.json();
@@ -110,7 +117,9 @@ export function useWebSocket() {
                     action: 'subscribe',
                     topics: [
                         initialTopic,
+                        `candles.aggregated.${symbol.toUpperCase()}.${timeframe}`,
                         'orderbook.aggregated',
+                        'orderbook.deep',
                         'options.analytics',
                         'liquidations',
                         'vwaf',
@@ -194,6 +203,7 @@ export function useWebSocket() {
 
                 if (msg.topic.startsWith('candles.')) {
                     const parts = msg.topic.split('.');
+                    const source = parts[1]; // binance | aggregated
                     const tf = parts[3];
                     const candle = msg.data as any;
 
@@ -201,7 +211,12 @@ export function useWebSocket() {
                         candle.cvd = (msg as any)._cvd;
                     }
 
-                    if (msg.topic === `candles.binance.${symbol.toUpperCase()}.${timeframe}`) {
+                    if (source === 'aggregated') {
+                        if (tf === timeframe) {
+                            if (candle.isUpdate) updateLastAggregatedCandle(candle);
+                            else addAggregatedCandle(candle);
+                        }
+                    } else if (msg.topic === `candles.binance.${symbol.toUpperCase()}.${timeframe}`) {
                         if (candle.isUpdate) updateLastCandle(candle);
                         else addCandle(candle);
                         setLastPrice(candle.close);
@@ -210,6 +225,7 @@ export function useWebSocket() {
                         addHtfCandle(tf, candle);
                     }
 
+                    // CVD logic (for all candles)
                     const { setMultiTfCvd, multiTfCvd } = useMarketStore.getState();
                     const existing = multiTfCvd[tf] || [];
                     const newPoint = { time: candle.time, value: candle.cvd ?? 0 };
@@ -229,6 +245,9 @@ export function useWebSocket() {
                 switch (msg.topic) {
                     case 'orderbook.aggregated':
                         pendingOrderbook.current = msg.data;
+                        break;
+                    case 'orderbook.deep':
+                        setDeepOrderbook(msg.data as any);
                         break;
                     case 'options.analytics':
                         setOptions(msg.data as any);
@@ -344,17 +363,23 @@ export function useWebSocket() {
     useEffect(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             const newTopic = `candles.binance.${symbol.toUpperCase()}.${timeframe}`;
+            const newAggTopic = `candles.aggregated.${symbol.toUpperCase()}.${timeframe}`;
 
             if (activeCandleTopic.current && activeCandleTopic.current !== newTopic) {
+                const oldTF = activeCandleTopic.current.split('.')[3];
+                const oldSym = activeCandleTopic.current.split('.')[2];
                 wsRef.current.send(JSON.stringify({
                     action: 'unsubscribe',
-                    topics: [activeCandleTopic.current]
+                    topics: [
+                        activeCandleTopic.current,
+                        `candles.aggregated.${oldSym}.${oldTF}`
+                    ]
                 }));
             }
 
             wsRef.current.send(JSON.stringify({
                 action: 'subscribe',
-                topics: [newTopic]
+                topics: [newTopic, newAggTopic]
             }));
 
             activeCandleTopic.current = newTopic;

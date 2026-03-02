@@ -16,7 +16,7 @@ export interface Alert {
     severity: 'info' | 'warn' | 'critical';
     message: string;
     price?: number;
-    direction?: 'BULLISH' | 'BEARISH';
+    direction?: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 }
 
 class AlertsEngine {
@@ -51,7 +51,7 @@ class AlertsEngine {
      * Check for whale liquidations
      */
     checkLiquidation(ev: LiquidationEvent) {
-        if (ev.size_usd >= 100000) {
+        if (ev.size_usd >= 1000000) {
             this.triggerAlert({
                 type: 'LIQ',
                 severity: ev.size_usd >= 500000 ? 'critical' : 'warn',
