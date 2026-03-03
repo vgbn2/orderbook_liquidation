@@ -120,14 +120,28 @@ async function start(): Promise<void> {
     let initialCandles: any[] = [];
     for (const tf of timeframes) {
         try {
-            const candles = await binanceAdapter.fetchKlines(globalSymbol, tf, 500);
+            // Speed up startup: Fetch first 100 immediately to unblock initialization
+            const candles = await binanceAdapter.fetchKlines(globalSymbol, tf, 100);
             if (candles.length > 0) {
                 await redis.set(`candles:${globalSymbol}:${tf}`, JSON.stringify(candles), 'EX', 3600);
-                logger.info({ count: candles.length, timeframe: tf }, 'Historical candles cached');
+                logger.info({ count: candles.length, timeframe: tf }, 'Initial 100 historical candles cached');
                 if (tf === '1m') initialCandles = candles;
+
+                // Then fetch the remaining in the background to fill up to 1500
+                (async () => {
+                    try {
+                        const fullHistory = await binanceAdapter.fetchKlines(globalSymbol, tf, 1500);
+                        if (fullHistory.length > candles.length) {
+                            await redis.set(`candles:${globalSymbol}:${tf}`, JSON.stringify(fullHistory), 'EX', 3600);
+                            logger.info({ count: fullHistory.length, timeframe: tf }, 'Full historical history background cached');
+                        }
+                    } catch (err) {
+                        logger.error({ err, tf }, 'Background historical fetch failed');
+                    }
+                })();
             }
         } catch (err) {
-            logger.error({ err, tf }, 'Failed to fetch historical candles');
+            logger.error({ err, tf }, 'Failed to fetch initial historical candles');
         }
     }
 
