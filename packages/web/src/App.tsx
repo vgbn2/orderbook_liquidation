@@ -161,11 +161,12 @@ export function App() {
 
         const handleMouseMove = (e: MouseEvent) => {
             if (isResizing) {
-                // Right panel width is window width minus mouse X
-                const newWidth = window.innerWidth - e.clientX;
-                if (newWidth > 200 && newWidth < 800) {
-                    setRightPanelWidth(newWidth);
-                }
+                // Right panel width adjustment using functional update
+                setRightPanelWidth(w => {
+                    const next = window.innerWidth - e.clientX;
+                    if (next > 200 && next < 800) return next;
+                    return w;
+                });
             } else if (isVResizing) {
                 // Orderbook height adjustment using movement delta (with bounds)
                 setOrderbookHeight(h => {
@@ -257,7 +258,17 @@ export function App() {
                     />
 
                     {/* ── RIGHT PANEL ────────────────────────────────── */}
-                    <aside id="right-panel" style={{ width: rightPanelWidth, background: 'var(--bg-surface)', borderLeft: '1px solid var(--border-strong)', display: 'flex', flexDirection: 'column', overflowY: 'auto', flexShrink: 0, zIndex: 10 }}>
+                    <aside id="right-panel" style={{
+                        width: rightPanelWidth,
+                        background: 'var(--bg-surface)',
+                        borderLeft: '1px solid var(--border-strong)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflowY: 'auto',
+                        flexShrink: 0,
+                        zIndex: 10,
+                        transition: isResizing ? 'none' : 'width 0.2s ease',
+                    }}>
 
                         <div style={{
                             borderBottom: showOrderbook ? '1px solid var(--border-medium)' : 'none',
