@@ -47,6 +47,8 @@ export function App() {
     const setExchangeView = useSettingsStore(s => s.setExchangeView);
     const rightPanelWidth = useSettingsStore(s => s.rightPanelWidth);
     const setRightPanelWidth = useSettingsStore(s => s.setRightPanelWidth);
+    const orderbookHeight = useSettingsStore(s => s.orderbookHeight);
+    const setOrderbookHeight = useSettingsStore(s => s.setOrderbookHeight);
 
     // Track if views were ever opened to preserve their state when hidden
     const backtestEverOpened = useRef(false);
@@ -143,25 +145,39 @@ export function App() {
 
     // ── Resizer Logic ──
     const [isResizing, setIsResizing] = useState(false);
+    const [isVResizing, setIsVResizing] = useState(false);
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         setIsResizing(true);
         e.preventDefault();
     }, []);
 
+    const handleVMouseDown = useCallback((e: React.MouseEvent) => {
+        setIsVResizing(true);
+        e.preventDefault();
+    }, []);
+
     useEffect(() => {
-        if (!isResizing) return;
+        if (!isResizing && !isVResizing) return;
 
         const handleMouseMove = (e: MouseEvent) => {
-            // Right panel width is window width minus mouse X
-            const newWidth = window.innerWidth - e.clientX;
-            // Constrain width
-            if (newWidth > 200 && newWidth < 800) {
-                setRightPanelWidth(newWidth);
+            if (isResizing) {
+                // Right panel width is window width minus mouse X
+                const newWidth = window.innerWidth - e.clientX;
+                if (newWidth > 200 && newWidth < 800) {
+                    setRightPanelWidth(newWidth);
+                }
+            } else if (isVResizing) {
+                // Orderbook height adjustment
+                const nextHeight = orderbookHeight + e.movementY;
+                if (nextHeight > 100 && nextHeight < window.innerHeight - 200) {
+                    setOrderbookHeight(nextHeight);
+                }
             }
         };
 
         const handleMouseUp = () => {
             setIsResizing(false);
+            setIsVResizing(false);
         };
 
         window.addEventListener('mousemove', handleMouseMove);
@@ -170,7 +186,7 @@ export function App() {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isResizing, setRightPanelWidth]);
+    }, [isResizing, isVResizing, setRightPanelWidth, setOrderbookHeight, orderbookHeight]);
 
     return (
         <div className="app-layout" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
@@ -246,13 +262,32 @@ export function App() {
                             borderBottom: showOrderbook ? '1px solid var(--border-medium)' : 'none',
                             flexShrink: 0,
                             overflow: 'hidden',
-                            maxHeight: showOrderbook ? 320 : 0,
-                            transition: 'max-height 0.2s ease',
+                            height: showOrderbook ? orderbookHeight : 0,
+                            transition: isVResizing ? 'none' : 'height 0.2s ease',
                         }}>
                             <ErrorBoundary name="Orderbook">
                                 <Orderbook />
                             </ErrorBoundary>
                         </div>
+
+                        {/* ── VERTICAL RESIZER ── */}
+                        {showOrderbook && (
+                            <div
+                                onMouseDown={handleVMouseDown}
+                                style={{
+                                    height: '4px',
+                                    cursor: 'row-resize',
+                                    background: isVResizing ? 'var(--accent)' : 'transparent',
+                                    zIndex: 100,
+                                    width: '100%',
+                                    transition: 'background 0.2s',
+                                    borderBottom: '1px solid var(--border-medium)',
+                                    marginTop: '-2px'
+                                }}
+                                onMouseEnter={(e) => { if (!isVResizing) e.currentTarget.style.background = 'rgba(0, 255, 200, 0.2)'; }}
+                                onMouseLeave={(e) => { if (!isVResizing) e.currentTarget.style.background = 'transparent'; }}
+                            />
+                        )}
 
                         {/* Market Replay Controls */}
                         <ErrorBoundary name="ReplayPanel">

@@ -23,6 +23,8 @@ interface SettingsState {
 
     rightPanelWidth: number;
     setRightPanelWidth: (w: number) => void;
+    orderbookHeight: number;
+    setOrderbookHeight: (h: number) => void;
 }
 
 function safeGet(key: string, fallback: string): string {
@@ -83,5 +85,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     setRightPanelWidth: (w) => {
         safeSet('term_right_w', String(w));
         set({ rightPanelWidth: w });
+    },
+    orderbookHeight: parseInt(safeGet('term_orderbook_h', '320')),
+    setOrderbookHeight: (h) => {
+        safeSet('term_orderbook_h', String(h));
+        set({ orderbookHeight: h });
     }
 }));
