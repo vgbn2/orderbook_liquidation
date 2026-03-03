@@ -22,9 +22,9 @@ interface SettingsState {
     setExchangeView: (ex: 'binance' | 'bybit' | 'okx' | 'hyperliquid' | 'mexc' | 'bitget' | 'gateio') => void;
 
     rightPanelWidth: number;
-    setRightPanelWidth: (w: number) => void;
+    setRightPanelWidth: (w: number | ((prev: number) => number)) => void;
     orderbookHeight: number;
-    setOrderbookHeight: (h: number) => void;
+    setOrderbookHeight: (h: number | ((prev: number) => number)) => void;
 }
 
 function safeGet(key: string, fallback: string): string {
@@ -82,13 +82,15 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     setExchangeView: (ex) => set({ exchangeView: ex }),
 
     rightPanelWidth: parseInt(safeGet('term_right_w', '320')),
-    setRightPanelWidth: (w) => {
-        safeSet('term_right_w', String(w));
-        set({ rightPanelWidth: w });
-    },
+    setRightPanelWidth: (valOrFn) => set(state => {
+        const next = typeof valOrFn === 'function' ? valOrFn(state.rightPanelWidth) : valOrFn;
+        safeSet('term_right_w', String(next));
+        return { rightPanelWidth: next };
+    }),
     orderbookHeight: parseInt(safeGet('term_orderbook_h', '320')),
-    setOrderbookHeight: (h) => {
-        safeSet('term_orderbook_h', String(h));
-        set({ orderbookHeight: h });
-    }
+    setOrderbookHeight: (valOrFn) => set(state => {
+        const next = typeof valOrFn === 'function' ? valOrFn(state.orderbookHeight) : valOrFn;
+        safeSet('term_orderbook_h', String(next));
+        return { orderbookHeight: next };
+    })
 }));

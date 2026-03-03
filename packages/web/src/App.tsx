@@ -167,11 +167,12 @@ export function App() {
                     setRightPanelWidth(newWidth);
                 }
             } else if (isVResizing) {
-                // Orderbook height adjustment
-                const nextHeight = orderbookHeight + e.movementY;
-                if (nextHeight > 100 && nextHeight < window.innerHeight - 200) {
-                    setOrderbookHeight(nextHeight);
-                }
+                // Orderbook height adjustment using movement delta (with bounds)
+                setOrderbookHeight(h => {
+                    const next = h + e.movementY;
+                    if (next > 100 && next < window.innerHeight - 200) return next;
+                    return h;
+                });
             }
         };
 
@@ -186,7 +187,7 @@ export function App() {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isResizing, isVResizing, setRightPanelWidth, setOrderbookHeight, orderbookHeight]);
+    }, [isResizing, isVResizing, setRightPanelWidth, setOrderbookHeight]);
 
     return (
         <div className="app-layout" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
