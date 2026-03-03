@@ -348,6 +348,10 @@ export function FloatingBacktestPanel({ onClose }: Props) {
                                 <span className="terminus-value" style={{ fontSize: '13px' }}>{result.sharpeRatio.toFixed(2)}</span>
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span className="terminus-label" style={{ fontSize: '9px' }}>SORTINO</span>
+                                <span className="terminus-value" style={{ fontSize: '13px' }}>{result.sortinoRatio.toFixed(2)}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span className="terminus-label" style={{ fontSize: '9px' }}>MAX DD</span>
                                 <span className="terminus-value" style={{ fontSize: '13px', color: 'var(--negative)' }}>{result.maxDrawdown.toFixed(2)}%</span>
                             </div>

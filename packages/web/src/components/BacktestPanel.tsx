@@ -246,6 +246,10 @@ export function BacktestPanel({ onResult }: Props = {}) {
                                 value={result.sharpeRatio.toFixed(2)}
                             />
                             <StatCard
+                                label="SORTINO RATIO"
+                                value={result.sortinoRatio.toFixed(2)}
+                            />
+                            <StatCard
                                 label="TOTAL FEES"
                                 value={`-$${result.totalFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                                 trend="down"

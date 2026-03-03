@@ -145,7 +145,16 @@ export function calculateStatsFromTrades(trades: TradeResult[], initialBalance: 
         monthlyReturns.push({ year: parseInt(y), month: parseInt(m), returnPct: val });
     });
 
-    const sharpeRatio = trades.length > 0 ? (netReturnPct / trades.length) / (maxDrawdown > 0 ? (maxDrawdown / Math.sqrt(trades.length)) : 1) : 0;
+    const tradeReturns = trades.map(t => t.pnlPct / 100);
+    const avgTradeReturn = tradeReturns.length > 0 ? tradeReturns.reduce((a, b) => a + b, 0) / tradeReturns.length : 0;
+    const stdTradeReturn = tradeReturns.length > 1 ? Math.sqrt(tradeReturns.reduce((a, b) => a + Math.pow(b - avgTradeReturn, 2), 0) / tradeReturns.length) : 0;
+    const sharpeRatio = stdTradeReturn === 0 ? 0 : (avgTradeReturn / stdTradeReturn) * Math.sqrt(tradeReturns.length);
+
+    const downsideReturns = tradeReturns.filter(r => r < 0);
+    const downsideStd = downsideReturns.length > 0
+        ? Math.sqrt(downsideReturns.reduce((a, b) => a + Math.pow(b, 2), 0) / tradeReturns.length)
+        : 0;
+    const sortinoRatio = downsideStd === 0 ? 0 : (avgTradeReturn / downsideStd) * Math.sqrt(tradeReturns.length);
 
     // We don't have underlying asset data, so BAH is assumed flat
     const bahCurve = equityCurve.map(p => ({ time: p.time, value: initialBalance }));
@@ -161,6 +170,7 @@ export function calculateStatsFromTrades(trades: TradeResult[], initialBalance: 
         bahFinalValue: initialBalance,
         bahReturnPct: 0,
         sharpeRatio,
+        sortinoRatio,
         maxDrawdown,
         maxProfitDrawdown: 0,
         maxProfitDrawdownPct: 0,

@@ -156,6 +156,7 @@ function OverviewTab({ result }: { result: BacktestResult }) {
                     <div className="label" style={{ marginBottom: 12 }}>RISK / DRAWDOWN</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <StatCard label="SHARPE RATIO" value={result.sharpeRatio.toFixed(2)} />
+                        <StatCard label="SORTINO RATIO" value={result.sortinoRatio.toFixed(2)} />
                         <StatCard label="MAX BALANCE DRAWDOWN" value={`-${result.maxDrawdown.toFixed(2)}%`} trend="down" />
                         <StatCard label="MAX PROFIT DRAWDOWN" value={`-$${result.maxProfitDrawdown.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${result.maxProfitDrawdownPct.toFixed(1)}%)`} trend="down" />
                         <StatCard label="PROFIT FACTOR" value={profitFactor === Infinity ? 'INF' : profitFactor.toFixed(2)} />

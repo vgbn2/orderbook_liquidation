@@ -43,6 +43,7 @@ export interface BacktestResult {
     bahFinalValue: number;
     bahReturnPct: number;
     sharpeRatio: number;
+    sortinoRatio: number;
     maxDrawdown: number;
     maxProfitDrawdown: number;
     maxProfitDrawdownPct: number;
@@ -414,7 +415,7 @@ function calculateBacktestMetrics(
     const winningTrades = trades.filter(t => t.pnl > 0);
     const losingTrades = trades.filter(t => t.pnl <= 0);
 
-    let sharpeRatio = 0, strategyReturns: number[] = [];
+    let sharpeRatio = 0, sortinoRatio = 0, strategyReturns: number[] = [];
     for (let i = 1; i < equityCurve.length; i++) {
         const prev = equityCurve[i - 1].value;
         if (prev !== 0) strategyReturns.push((equityCurve[i].value - prev) / prev);
@@ -423,6 +424,12 @@ function calculateBacktestMetrics(
         const avgR = strategyReturns.reduce((a, b) => a + b, 0) / strategyReturns.length;
         const stdR = Math.sqrt(strategyReturns.map(x => Math.pow(x - avgR, 2)).reduce((a, b) => a + b, 0) / strategyReturns.length);
         sharpeRatio = stdR === 0 ? 0 : (avgR / stdR) * Math.sqrt(strategyReturns.length);
+
+        const downsideReturns = strategyReturns.filter(r => r < 0);
+        const downsideStd = downsideReturns.length > 0
+            ? Math.sqrt(downsideReturns.reduce((a, b) => a + Math.pow(b, 2), 0) / strategyReturns.length)
+            : 0;
+        sortinoRatio = downsideStd === 0 ? 0 : (avgR / downsideStd) * Math.sqrt(strategyReturns.length);
     }
 
     const bahFinalValue = bahCurve.length > 0 ? bahCurve[bahCurve.length - 1].value : initialBalance;
@@ -525,7 +532,7 @@ function calculateBacktestMetrics(
         trades, totalTrades: trades.length, winRate: trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0,
         initialBalance, finalBalance: balance, netPnL: balance - initialBalance, netReturnPct: ((balance - initialBalance) / initialBalance) * 100,
         bahFinalValue, bahReturnPct: ((bahFinalValue - initialBalance) / initialBalance) * 100,
-        sharpeRatio, maxDrawdown: maxDD, maxProfitDrawdown: maxPDD, maxProfitDrawdownPct: peakBal > initialBalance ? (maxPDD / (peakBal - initialBalance)) * 100 : 0,
+        sharpeRatio, sortinoRatio, maxDrawdown: maxDD, maxProfitDrawdown: maxPDD, maxProfitDrawdownPct: peakBal > initialBalance ? (maxPDD / (peakBal - initialBalance)) * 100 : 0,
         equityCurve, bahCurve, totalPnL: trades.reduce((sum, t) => sum + t.pnlPct, 0), monthlyReturns, drawdownCurve: ddCurve,
         totalFees: entryFees + exitFees + totalHoldingFees, entryFees, exitFees, holdingFees: totalHoldingFees,
         alpha: alpha * 100, beta, marketExposure, waveContributionPct, ev,
