@@ -1,4 +1,5 @@
-import { useMarketStore } from '../stores/marketStore';
+import { useCandleStore } from '../stores/candleStore';
+import { useMarketDataStore } from '../stores/marketDataStore';
 import { usePerfStore } from '../stores/usePerfStore';
 import { useRef, useEffect, useCallback } from 'react';
 import { createWorker } from '../engines/websocketWorker';
@@ -26,20 +27,21 @@ export function useWebSocket() {
     useEffect(() => {
         // 15 FPS Throttle
         const flushInterval = setInterval(() => {
+            const state = useMarketDataStore.getState();
             if (pendingOrderbook.current) {
-                useMarketStore.getState().setOrderbook(pendingOrderbook.current);
+                state.setOrderbook(pendingOrderbook.current);
                 pendingOrderbook.current = null;
             }
             if (pendingLiquidations.current) {
-                useMarketStore.getState().setLiquidations(pendingLiquidations.current);
+                state.setLiquidations(pendingLiquidations.current);
                 pendingLiquidations.current = null;
             }
             if (pendingConfluence.current) {
-                useMarketStore.getState().setConfluenceZones(pendingConfluence.current);
+                state.setConfluenceZones(pendingConfluence.current);
                 pendingConfluence.current = null;
             }
             if (pendingQuant.current) {
-                useMarketStore.getState().setQuantSnapshot(pendingQuant.current);
+                state.setQuantSnapshot(pendingQuant.current);
                 pendingQuant.current = null;
             }
         }, 66);
@@ -47,17 +49,19 @@ export function useWebSocket() {
     }, []);
 
     const {
-        symbol, setSymbol, timeframe,
-        setConnected, addCandle, updateLastCandle, setLastPrice,
-        setOrderbook, setDeepOrderbook, setOptions, addOptionTrade, setLiquidations,
-        addLiquidation, setFundingRates, setOpenInterest,
-        setVwaf, setConfluenceZones, addTrade,
-        setReplayMode, setReplayTimestamp, isReplayMode,
-        setQuantSnapshot, setIctData, setConfirmedSweeps,
-        addHtfCandle,
+        symbol, timeframe,
+        addCandle, updateLastCandle,
         addAggregatedCandle, updateLastAggregatedCandle,
-        setSend
-    } = useMarketStore();
+        addHtfCandle,
+    } = useCandleStore();
+
+    const {
+        setConnected, setLastPrice, setOrderbook, setDeepOrderbook,
+        setOptions, addOptionTrade, setLiquidations, addLiquidation,
+        setFundingRates, setOpenInterest, setVwaf, setConfluenceZones,
+        addTrade, setReplayMode, setReplayTimestamp, isReplayMode,
+        setQuantSnapshot, setIctData, setConfirmedSweeps, setSend
+    } = useMarketDataStore();
 
     const handleRef = useRef<any>(null);
 
@@ -226,7 +230,7 @@ export function useWebSocket() {
                     }
 
                     // CVD logic (for all candles)
-                    const { setMultiTfCvd, multiTfCvd } = useMarketStore.getState();
+                    const { setMultiTfCvd, multiTfCvd } = useCandleStore.getState();
                     const existing = multiTfCvd[tf] || [];
                     const newPoint = { time: candle.time, value: candle.cvd ?? 0 };
 
@@ -277,7 +281,7 @@ export function useWebSocket() {
                         addTrade(msg.data as any);
                         break;
                     case 'alerts':
-                        useMarketStore.getState().addAlert(msg.data as any);
+                        useMarketDataStore.getState().addAlert(msg.data as any);
                         window.dispatchEvent(new CustomEvent('terminal_alert', { detail: msg.data }));
                         if ((msg.data as any).severity === 'critical') {
                             window.dispatchEvent(new CustomEvent('terminus_toast', {
@@ -305,7 +309,7 @@ export function useWebSocket() {
                         break;
                     case 'ict.sweep_confirmed': {
                         const sweep = msg.data as any;
-                        setConfirmedSweeps([sweep, ...useMarketStore.getState().confirmedSweeps].slice(0, 50));
+                        setConfirmedSweeps([sweep, ...useMarketDataStore.getState().confirmedSweeps].slice(0, 50));
                         break;
                     }
                     case 'symbol_changed': {
@@ -323,7 +327,7 @@ export function useWebSocket() {
         setLiquidations, addLiquidation, setFundingRates, setOpenInterest, setVwaf,
         setConfluenceZones, addTrade, setReplayMode, setReplayTimestamp, isReplayMode, setQuantSnapshot,
         setIctData, setConfirmedSweeps, addHtfCandle,
-        setSymbol, symbol, timeframe, setMetrics
+        symbol, timeframe, setMetrics
     ]);
 
     useEffect(() => {

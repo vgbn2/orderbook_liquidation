@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { usePerfStore } from "../stores/usePerfStore";
-import { useMarketStore } from "../stores/marketStore";
+import { useCandleStore } from "../stores/candleStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { SettingsPopover } from "./SettingsPopover";
 
@@ -76,14 +76,14 @@ export function Toolbar({
 
     const isPerfHudActive = usePerfStore((s) => s.showPerfHud);
     const togglePerfHud = usePerfStore((s) => s.toggleHud);
-    const timeframe = useMarketStore((s) => s.timeframe);
-    const setTimeframe = useMarketStore((s) => s.setTimeframe);
+    const timeframe = useCandleStore((s) => s.timeframe);
+    const setTimeframe = useCandleStore((s) => s.setTimeframe);
 
     const showOrderbook = useSettingsStore(s => s.showOrderbook);
     const toggleOrderbook = useSettingsStore(s => s.toggleOrderbook);
 
-    const showAggregated = useMarketStore(s => s.showAggregated);
-    const setShowAggregated = useMarketStore(s => s.setShowAggregated);
+    const showAggregated = useCandleStore(s => s.showAggregated);
+    const setShowAggregated = useCandleStore(s => s.setShowAggregated);
 
     const notificationLevel = useSettingsStore(s => s.notificationLevel);
     const setNotificationLevel = useSettingsStore(s => s.setNotificationLevel);

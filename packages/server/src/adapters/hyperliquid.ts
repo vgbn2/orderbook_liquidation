@@ -42,7 +42,15 @@ export function stopHyperliquid(symbol: string) {
 function connect() {
     if (isStopped) return;
 
-    ws = new WebSocket(HL_WS_URL);
+    try {
+        ws = new WebSocket(HL_WS_URL);
+    } catch (err) {
+        logger.error({ err }, 'Failed to initialize Hyperliquid WebSocket');
+        reconnectTimer = setTimeout(() => {
+            if (!isStopped) connect();
+        }, 3000);
+        return;
+    }
 
     ws.on('open', () => {
         logger.info({ coin: currentCoin }, 'Hyperliquid WS connected');

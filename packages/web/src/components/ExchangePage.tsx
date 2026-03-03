@@ -1,4 +1,5 @@
-import { useMarketStore } from '../stores/marketStore';
+import { useCandleStore } from '../stores/candleStore';
+import { useMarketDataStore } from '../stores/marketDataStore';
 import { useRef, useEffect } from 'react';
 
 // Also need to get EXCHANGE_CONFIG and Props
@@ -19,14 +20,14 @@ const EXCHANGE_CONFIG = {
 export function ExchangePage({ exchange }: Props) {
     const cfg = EXCHANGE_CONFIG[exchange] || EXCHANGE_CONFIG.binance;
 
-    // ── Read from store ──────────────────────────────────────
-    const orderbook = useMarketStore(s => s.orderbook);
-    const trades = useMarketStore(s => s.trades);          // last 50 trades
-    const fundingRates = useMarketStore(s => s.fundingRates);    // array, most recent last
-    const openInterest = useMarketStore(s => s.openInterest);    // array, most recent last
-    const vwaf = useMarketStore(s => s.vwaf);
-    const lastPrice = useMarketStore(s => s.lastPrice);
-    const symbol = useMarketStore(s => s.symbol);
+    // ── Read from stores ──────────────────────────────────────
+    const orderbook = useMarketDataStore(s => s.orderbook);
+    const trades = useMarketDataStore(s => s.trades);          // last 50 trades
+    const fundingRates = useMarketDataStore(s => s.fundingRates);    // array, most recent last
+    const openInterest = useMarketDataStore(s => s.openInterest);    // array, most recent last
+    const vwaf = useMarketDataStore(s => s.vwaf);
+    const lastPrice = useMarketDataStore(s => s.lastPrice);
+    const symbol = useCandleStore(s => s.symbol);
 
     const latestFunding = fundingRates[fundingRates.length - 1];
     const latestOI = openInterest[openInterest.length - 1];

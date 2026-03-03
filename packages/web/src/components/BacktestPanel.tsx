@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useMarketStore, CandleData } from '../stores/marketStore';
+import { useCandleStore } from '../stores/candleStore';
+import { CandleData } from '../types';
 import { runBacktest, BacktestResult } from '../lib/backtester';
 import { STRATEGY_PRESETS } from '../lib/strategyBuilder';
 import { EquityChart } from './EquityChart';
@@ -26,7 +27,7 @@ const DEFAULT_STRATEGY = `{
 }
 
 export function BacktestPanel({ onResult }: Props = {}) {
-    const candles = useMarketStore(s => s.candles);
+    const candles = useCandleStore(s => s.candles);
     const [jsonInput, setJsonInput] = useState(() => {
         const saved = localStorage.getItem('terminus_backtest_config');
         return saved || DEFAULT_STRATEGY;
@@ -40,9 +41,9 @@ export function BacktestPanel({ onResult }: Props = {}) {
         localStorage.setItem('terminus_backtest_config', jsonInput);
     }, [jsonInput]);
 
-    const timeframe = useMarketStore(s => s.timeframe);
-    const symbol = useMarketStore(s => s.symbol);
-    const setTimeframe = useMarketStore(s => s.setTimeframe);
+    const timeframe = useCandleStore(s => s.timeframe);
+    const symbol = useCandleStore(s => s.symbol);
+    const setTimeframe = useCandleStore(s => s.setTimeframe);
 
     const TIMEFRAMES = [
         { value: "1m", label: "1m" },

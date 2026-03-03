@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { useMarketStore } from '../stores/marketStore';
+import { useMarketDataStore } from '../stores/marketDataStore';
 
 export function AlertManager({ onClose }: { onClose: () => void }) {
-    const storeAlerts = useMarketStore(s => s.activeAlerts);
+    const storeAlerts = useMarketDataStore(s => s.activeAlerts);
     const [localAlerts, setLocalAlerts] = useState<any[]>([]);
 
     useEffect(() => {

@@ -9,8 +9,18 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 export function startOkx(symbol: string) {
     const instId = symbol.toUpperCase().replace('USDT', '-USDT-SWAP');
-    isStopped = false;
-    ws = new WebSocket('wss://ws.okx.com:8443/ws/v5/public');
+    connect(symbol, instId);
+}
+
+function connect(symbol: string, instId: string) {
+    if (isStopped) return;
+    try {
+        ws = new WebSocket('wss://ws.okx.com:8443/ws/v5/public');
+    } catch (err) {
+        logger.error({ err }, 'Failed to initialize OKX WebSocket');
+        setTimeout(() => connect(symbol, instId), 3000);
+        return;
+    }
 
     ws.on('open', () => {
         logger.info('OKX orderbook connected');
@@ -66,7 +76,7 @@ export function startOkx(symbol: string) {
 
     ws.on('close', () => {
         stopHeartbeat();
-        if (!isStopped) setTimeout(() => startOkx(symbol), 3000);
+        if (!isStopped) setTimeout(() => connect(symbol, instId), 3000);
     });
 }
 

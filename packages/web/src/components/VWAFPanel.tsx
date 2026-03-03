@@ -1,4 +1,4 @@
-import { useMarketStore } from '../stores/marketStore';
+import { useMarketDataStore } from '../stores/marketDataStore';
 import { PanelSection, StatCard, Badge } from './UI';
 
 const SENTIMENT_LABELS: Record<string, { label: string, type: any }> = {
@@ -20,7 +20,7 @@ function formatUSD(v: number): string {
 }
 
 export function VWAFPanel() {
-    const vwaf = useMarketStore((s) => s.vwaf);
+    const vwaf = useMarketDataStore((s) => s.vwaf);
 
     if (!vwaf) {
         return (

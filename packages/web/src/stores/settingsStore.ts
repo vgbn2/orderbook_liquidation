@@ -20,6 +20,9 @@ interface SettingsState {
 
     exchangeView: 'binance' | 'bybit' | 'okx' | 'hyperliquid' | 'mexc' | 'bitget' | 'gateio';
     setExchangeView: (ex: 'binance' | 'bybit' | 'okx' | 'hyperliquid' | 'mexc' | 'bitget' | 'gateio') => void;
+
+    rightPanelWidth: number;
+    setRightPanelWidth: (w: number) => void;
 }
 
 function safeGet(key: string, fallback: string): string {
@@ -74,5 +77,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     currentView: 'chart',
     setView: (v) => set({ currentView: v }),
     exchangeView: 'binance',
-    setExchangeView: (ex) => set({ exchangeView: ex })
+    setExchangeView: (ex) => set({ exchangeView: ex }),
+
+    rightPanelWidth: parseInt(safeGet('term_right_w', '320')),
+    setRightPanelWidth: (w) => {
+        safeSet('term_right_w', String(w));
+        set({ rightPanelWidth: w });
+    }
 }));

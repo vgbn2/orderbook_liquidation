@@ -1,8 +1,8 @@
-import { useMarketStore } from '../stores/marketStore';
+import { useMarketDataStore } from '../stores/marketDataStore';
 import { PanelSection, StatCard, Badge } from './UI';
 
 export function LiquidationPanel() {
-    const liqData = useMarketStore((s) => s.liquidations);
+    const liqData = useMarketDataStore((s) => s.liquidations);
 
     if (!liqData) {
         return (

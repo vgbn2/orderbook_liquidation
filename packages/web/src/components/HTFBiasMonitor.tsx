@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { useMarketStore } from '../stores/marketStore';
+import { useCandleStore } from '../stores/candleStore';
 import { computeHTFBias } from '../lib/htfBias';
 
 export function HTFBiasMonitor() {
-    const { htfCandles, htfBias, setHtfBias } = useMarketStore();
+    const { htfCandles, htfBias, setHtfBias } = useCandleStore();
 
     // Recompute bias when candles update
     useEffect(() => {

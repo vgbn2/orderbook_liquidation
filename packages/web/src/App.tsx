@@ -1,4 +1,5 @@
-import { useMarketStore } from './stores/marketStore';
+import { useCandleStore } from './stores/candleStore';
+import { useMarketDataStore } from './stores/marketDataStore';
 import { Chart } from './components/Chart';
 import { TerminusNav } from './components/TerminusNav';
 import { FloatingBacktestPanel } from './components/FloatingBacktestPanel';
@@ -20,14 +21,20 @@ import { HTFBiasMonitor } from './components/HTFBiasMonitor';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSettingsStore } from './stores/settingsStore';
 import { useWebSocket } from './hooks/useWebSocket';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 export function App() {
-    const { connected, setCandles, setAggregatedCandles, showAggregated, symbol, timeframe } = useMarketStore();
+    const connected = useMarketDataStore(s => s.connected);
+    const symbol = useCandleStore(s => s.symbol);
+    const timeframe = useCandleStore(s => s.timeframe);
+    const setCandles = useCandleStore(s => s.setCandles);
+    const setAggregatedCandles = useCandleStore(s => s.setAggregatedCandles);
+    const showAggregated = useCandleStore(s => s.showAggregated);
 
     // Initialize Singleton WebSocket connection
     useWebSocket();
     const [loading, setLoading] = useState(true);
-    const candles = useMarketStore(s => s.candles);
+    const candles = useCandleStore(s => s.candles);
     const timezone = 7; // UTC+7 default
     const [sidebarTab, setSidebarTab] = useState<'macro' | 'options'>('macro');
     const [showBacktestPanel, setShowBacktestPanel] = useState(false);
@@ -38,6 +45,8 @@ export function App() {
     const setView = useSettingsStore(s => s.setView);
     const exchangeView = useSettingsStore(s => s.exchangeView);
     const setExchangeView = useSettingsStore(s => s.setExchangeView);
+    const rightPanelWidth = useSettingsStore(s => s.rightPanelWidth);
+    const setRightPanelWidth = useSettingsStore(s => s.setRightPanelWidth);
 
     // Track if views were ever opened to preserve their state when hidden
     const backtestEverOpened = useRef(false);
@@ -132,6 +141,37 @@ export function App() {
         return () => clearTimeout(t);
     }, [candles.length]);
 
+    // ── Resizer Logic ──
+    const [isResizing, setIsResizing] = useState(false);
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        setIsResizing(true);
+        e.preventDefault();
+    }, []);
+
+    useEffect(() => {
+        if (!isResizing) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            // Right panel width is window width minus mouse X
+            const newWidth = window.innerWidth - e.clientX;
+            // Constrain width
+            if (newWidth > 200 && newWidth < 800) {
+                setRightPanelWidth(newWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing, setRightPanelWidth]);
+
     return (
         <div className="app-layout" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
             {/* ── TOP NAV ────────────────────────────────────────── */}
@@ -167,21 +207,40 @@ export function App() {
                                     </span>
                                 </div>
                             )}
-                            <Chart
-                                timezoneOffset={timezone}
-                                activeTool={activeTool}
-                                drawings={drawings}
-                                setDrawings={setDrawings}
-                                activeIndicators={activeIndicators}
-                                onSelectDrawing={setSelectedDrawing}
-                                selectedDrawing={selectedDrawing}
-                                onToolEnd={() => setActiveTool('none')}
-                            />
+                            <ErrorBoundary name="Chart">
+                                <Chart
+                                    timezoneOffset={timezone}
+                                    activeTool={activeTool}
+                                    drawings={drawings}
+                                    setDrawings={setDrawings}
+                                    activeIndicators={activeIndicators}
+                                    onSelectDrawing={setSelectedDrawing}
+                                    selectedDrawing={selectedDrawing}
+                                    onToolEnd={() => setActiveTool('none')}
+                                />
+                            </ErrorBoundary>
                         </div>
                     </div>
 
+                    {/* ── RESIZER ── */}
+                    <div
+                        onMouseDown={handleMouseDown}
+                        style={{
+                            width: '4px',
+                            cursor: 'col-resize',
+                            background: isResizing ? 'var(--accent)' : 'transparent',
+                            zIndex: 100,
+                            height: '100%',
+                            transition: 'background 0.2s',
+                            borderLeft: '1px solid var(--border-medium)',
+                            marginLeft: '-2px'
+                        }}
+                        onMouseEnter={(e) => { if (!isResizing) e.currentTarget.style.background = 'rgba(0, 255, 200, 0.2)'; }}
+                        onMouseLeave={(e) => { if (!isResizing) e.currentTarget.style.background = 'transparent'; }}
+                    />
+
                     {/* ── RIGHT PANEL ────────────────────────────────── */}
-                    <aside id="right-panel" style={{ width: 'var(--right-w)', background: 'var(--bg-surface)', borderLeft: '1px solid var(--border-strong)', display: 'flex', flexDirection: 'column', overflowY: 'auto', flexShrink: 0, zIndex: 10 }}>
+                    <aside id="right-panel" style={{ width: rightPanelWidth, background: 'var(--bg-surface)', borderLeft: '1px solid var(--border-strong)', display: 'flex', flexDirection: 'column', overflowY: 'auto', flexShrink: 0, zIndex: 10 }}>
 
                         <div style={{
                             borderBottom: showOrderbook ? '1px solid var(--border-medium)' : 'none',
@@ -190,11 +249,15 @@ export function App() {
                             maxHeight: showOrderbook ? 320 : 0,
                             transition: 'max-height 0.2s ease',
                         }}>
-                            <Orderbook />
+                            <ErrorBoundary name="Orderbook">
+                                <Orderbook />
+                            </ErrorBoundary>
                         </div>
 
                         {/* Market Replay Controls */}
-                        <ReplayPanel />
+                        <ErrorBoundary name="ReplayPanel">
+                            <ReplayPanel />
+                        </ErrorBoundary>
 
                         {/* Tabs area */}
                         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
@@ -225,14 +288,14 @@ export function App() {
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                             {sidebarTab === 'macro' ? (
                                 <>
-                                    <HTFBiasMonitor />
-                                    <QuantPanel />
-                                    <LiquidationPanel />
-                                    <VWAFPanel />
-                                    <ConfluencePanel />
+                                    <ErrorBoundary name="HTFBiasMonitor"><HTFBiasMonitor /></ErrorBoundary>
+                                    <ErrorBoundary name="QuantPanel"><QuantPanel /></ErrorBoundary>
+                                    <ErrorBoundary name="LiquidationPanel"><LiquidationPanel /></ErrorBoundary>
+                                    <ErrorBoundary name="VWAFPanel"><VWAFPanel /></ErrorBoundary>
+                                    <ErrorBoundary name="ConfluencePanel"><ConfluencePanel /></ErrorBoundary>
                                 </>
                             ) : (
-                                <OptionsPanel />
+                                <ErrorBoundary name="OptionsPanel"><OptionsPanel /></ErrorBoundary>
                             )}
                         </div>
                     </aside>

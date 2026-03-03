@@ -110,7 +110,7 @@ class AlertsEngine {
         this.activeAlerts.push(alert);
         if (this.activeAlerts.length > 50) this.activeAlerts.shift();
 
-        logger.info({ alert }, 'New Market Alert');
+        // logger.info({ alert }, 'New Market Alert');
         clientHub.broadcast('alerts' as any, alert);
         redis.set('alerts:latest', JSON.stringify(this.activeAlerts)).catch(() => { });
     }

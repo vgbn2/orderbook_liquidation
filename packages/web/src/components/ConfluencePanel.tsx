@@ -1,4 +1,4 @@
-import { useMarketStore } from '../stores/marketStore';
+import { useMarketDataStore } from '../stores/marketDataStore';
 import { PanelSection, Badge } from './UI';
 
 const SIGNAL_ICONS: Record<string, string> = {
@@ -28,7 +28,7 @@ interface ConfluenceZoneData {
 }
 
 export function ConfluencePanel() {
-    const zones = useMarketStore((s) => s.confluenceZones);
+    const zones = useMarketDataStore((s) => s.confluenceZones);
 
     if (!zones || zones.length === 0) {
         return (

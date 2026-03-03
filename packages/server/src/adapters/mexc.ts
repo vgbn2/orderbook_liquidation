@@ -29,7 +29,15 @@ function connect(symbol: string) {
     // Mexc expects symbol in BTCUSDT format for WS
     const formattedSymbol = symbol.toUpperCase();
 
-    ws = new WebSocket('wss://wbs.mexc.com/ws');
+    try {
+        ws = new WebSocket('wss://wbs.mexc.com/ws');
+    } catch (err) {
+        logger.error({ err }, 'Failed to initialize MEXC WebSocket');
+        setTimeout(() => {
+            if (!isStopped) connect(symbol);
+        }, 3000);
+        return;
+    }
 
     ws.on('open', () => {
         logger.info('MEXC orderbook connected');

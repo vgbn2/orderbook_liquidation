@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDraggable } from '../hooks/useDraggable';
-import { useMarketStore } from '../stores/marketStore';
+import { useCandleStore } from '../stores/candleStore';
 import { runBacktest, BacktestResult } from '../lib/backtester';
 import { STRATEGY_PRESETS } from '../lib/strategyBuilder';
 import { EquityChart } from './EquityChart';
@@ -34,9 +34,9 @@ export function FloatingBacktestPanel({ onClose }: Props) {
     const [error, setError] = useState<string | null>(null);
     const [backtestDays, setBacktestDays] = useState<number | 'all' | null>(null);
 
-    const candles = useMarketStore(s => s.candles);
-    const timeframe = useMarketStore(s => s.timeframe);
-    const symbol = useMarketStore(s => s.symbol);
+    const candles = useCandleStore(s => s.candles);
+    const timeframe = useCandleStore(s => s.timeframe);
+    const symbol = useCandleStore(s => s.symbol);
 
     const { elementRef, handleMouseDown, isDragging } = useDraggable({
         initialPosition: { x: window.innerWidth / 2 - 400, y: window.innerHeight - 300 }

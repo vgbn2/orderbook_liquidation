@@ -70,7 +70,7 @@ export class OrderbookEngine {
         this.dirty = true;
         this._startBroadcastLoop();
 
-        logger.info({ exchange, bids: bids.size, asks: asks.size }, 'Orderbook snapshot loaded');
+        // logger.info({ exchange, bids: bids.size, asks: asks.size }, 'Orderbook snapshot loaded');
     }
 
     /**

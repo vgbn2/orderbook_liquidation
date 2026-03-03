@@ -51,7 +51,13 @@ function connect(symbol: string) {
     isResyncing = false;
     lastSeq = null; // Reset on new connection
 
-    ws = new WebSocket('wss://stream.bybit.com/v5/public/linear');
+    try {
+        ws = new WebSocket('wss://stream.bybit.com/v5/public/linear');
+    } catch (err) {
+        logger.error({ err }, 'Failed to initialize Bybit WebSocket');
+        setTimeout(() => connect(symbol), 3000);
+        return;
+    }
 
     ws.on('open', () => {
         logger.info('Bybit orderbook connected');

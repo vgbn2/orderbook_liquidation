@@ -1,8 +1,8 @@
-import { useMarketStore } from '../stores/marketStore';
+import { useMarketDataStore } from '../stores/marketDataStore';
 
 export function OptionsPanel() {
-    const options = useMarketStore((s) => s.options);
-    const trades = useMarketStore((s) => s.optionTrades);
+    const options = useMarketDataStore((s) => s.options);
+    const trades = useMarketDataStore((s) => s.optionTrades);
 
     if (!options) {
         return (
@@ -87,7 +87,7 @@ export function OptionsPanel() {
                             const barH = Math.max(2, (Math.abs(e.gex) / maxAbsGex) * HALF);
                             const isPositive = e.gex >= 0;
 
-                            const spotPrice = useMarketStore.getState().lastPrice;
+                            const spotPrice = useMarketDataStore.getState().lastPrice;
                             const isNearSpot = spotPrice ? Math.abs(e.strike - spotPrice) / spotPrice < 0.005 : false;
 
                             return (

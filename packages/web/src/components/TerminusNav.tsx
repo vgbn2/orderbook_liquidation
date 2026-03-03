@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { useMarketStore } from "../stores/marketStore";
+import { useCandleStore } from "../stores/candleStore";
+import { useMarketDataStore } from "../stores/marketDataStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { SettingsPopover } from "./SettingsPopover";
 import { showToast } from "./Toast";
@@ -489,10 +490,14 @@ function MarketSwitcher({ markets, onSelect, onClose }: { markets: any[], onSele
 // ─── MAIN NAV ─────────────────────────────────────────────────
 export function TerminusNav() {
     const {
-        connected, lastPrice, priceDirection, symbol, send,
-        setSymbol, setCandles, setOrderbook, setOptions,
-        setLiquidations, setVwaf, setConfluenceZones
-    } = useMarketStore();
+        symbol, setSymbol, setCandles
+    } = useCandleStore();
+
+    const {
+        connected, lastPrice, priceDirection, send,
+        setOrderbook, setOptions, setLiquidations, setVwaf,
+        setConfluenceZones
+    } = useMarketDataStore();
     const currentView = useSettingsStore(s => s.currentView);
     const setView = useSettingsStore(s => s.setView);
     const exchangeView = useSettingsStore(s => s.exchangeView);

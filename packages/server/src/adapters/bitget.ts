@@ -29,7 +29,13 @@ function connect(symbol: string) {
     // Bitget expects symbol in BTCUSDT format for Spot
     const formattedSymbol = symbol.toUpperCase();
 
-    ws = new WebSocket('wss://ws.bitget.com/v2/ws/public');
+    try {
+        ws = new WebSocket('wss://ws.bitget.com/v2/ws/public');
+    } catch (err) {
+        logger.error({ err }, 'Failed to initialize Bitget WebSocket');
+        setTimeout(() => connect(symbol), 3000);
+        return;
+    }
 
     ws.on('open', () => {
         logger.info('Bitget orderbook connected');

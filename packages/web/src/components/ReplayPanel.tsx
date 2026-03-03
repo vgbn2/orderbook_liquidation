@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMarketStore } from '../stores/marketStore';
+import { useMarketDataStore } from '../stores/marketDataStore';
 
 interface PaperPosition {
     side: 'long' | 'short';
@@ -21,7 +21,7 @@ export function ReplayPanel() {
     const {
         isReplayMode, setReplayMode, replayTimestamp, setReplayTimestamp,
         lastPrice, send
-    } = useMarketStore();
+    } = useMarketDataStore();
 
     const startReplay = (config: { startTime: number; endTime: number; speed: number }) => {
         setReplayMode(true);
