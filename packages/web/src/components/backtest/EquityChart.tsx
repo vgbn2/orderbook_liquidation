@@ -84,8 +84,15 @@ export function EquityChart({ result, height = 200 }: EquityChartProps) {
 
     useEffect(() => {
         if (strategySeriesRef.current && bahSeriesRef.current && result) {
-            strategySeriesRef.current.setData(result.equityCurve.map(p => ({ ...p, time: p.time as Time })));
-            bahSeriesRef.current.setData(result.bahCurve.map(p => ({ ...p, time: p.time as Time })));
+            const dedupe = (arr: typeof result.equityCurve) => {
+                const seen = new Map<number, typeof arr[0]>();
+                for (const p of arr) seen.set(p.time as number, p);
+                return [...seen.entries()]
+                    .sort((a, b) => a[0] - b[0])
+                    .map(([, p]) => ({ ...p, time: p.time as Time }));
+            };
+            strategySeriesRef.current.setData(dedupe(result.equityCurve));
+            bahSeriesRef.current.setData(dedupe(result.bahCurve));
             chartRef.current?.timeScale().fitContent();
         }
     }, [result]);

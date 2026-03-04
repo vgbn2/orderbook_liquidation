@@ -32,6 +32,7 @@ const VENV_PYTHON = join(__dirname, '../../scripts/venv/bin/python3');
 const PYTHON_BIN = existsSync(VENV_PYTHON) ? VENV_PYTHON : findPythonBinary();
 
 export interface QuantSnapshot {
+    symbol: string;
     ts: number;
     currentPrice: number;
     meta: {
@@ -68,18 +69,33 @@ export interface QuantSnapshot {
 }
 
 class QuantEngine {
-    private lastSnapshot: QuantSnapshot | null = null;
+    private cache: Map<string, QuantSnapshot> = new Map();
+    private activeSymbol = 'BTCUSDT';
     private isRunning = false;
     private timer: ReturnType<typeof setInterval> | null = null;
 
-    getLastSnapshot(): QuantSnapshot | null {
-        return this.lastSnapshot;
+    getLastSnapshot(symbol?: string): QuantSnapshot | null {
+        return this.cache.get(symbol || this.activeSymbol) || null;
     }
 
-    start() {
-        logger.info('QuantEngine starting — first cycle now, then every 1hr');
-        this.runCycle();
-        this.timer = setInterval(() => this.runCycle(), INTERVAL);
+    switchSymbol(newSymbol: string) {
+        if (this.activeSymbol === newSymbol) return;
+        this.activeSymbol = newSymbol;
+
+        const cached = this.cache.get(newSymbol);
+        if (cached) {
+            clientHub.broadcast('quant.analytics' as any, cached);
+        } else {
+            // Trigger run for new symbol
+            this.runCycle(newSymbol, 1);
+        }
+    }
+
+    start(initialSymbol = 'BTCUSDT') {
+        this.activeSymbol = initialSymbol;
+        logger.info(`QuantEngine starting for ${this.activeSymbol} — first cycle now, then every 1hr`);
+        this.runCycle(this.activeSymbol);
+        this.timer = setInterval(() => this.runCycle(this.activeSymbol), INTERVAL);
     }
 
     stop() {
@@ -89,7 +105,7 @@ class QuantEngine {
         }
     }
 
-    private async runCycle(attempt = 1): Promise<void> {
+    private async runCycle(symbol: string, attempt = 1): Promise<void> {
         if (this.isRunning) {
             logger.debug('QuantEngine: previous cycle still running, skipping');
             return;
@@ -97,40 +113,50 @@ class QuantEngine {
         this.isRunning = true;
 
         try {
-            const raw = await this.fetchMacroData();
+            const raw = await this.fetchMacroData(symbol);
             if (raw.error) {
                 throw new Error(raw.error);
             }
 
-            this.lastSnapshot = raw as QuantSnapshot;
-            clientHub.broadcast('quant.analytics' as any, this.lastSnapshot);
+            const snapshot = raw as QuantSnapshot;
+            snapshot.symbol = symbol;
+            this.cache.set(symbol, snapshot);
+
+            // Only broadcast if this is still the active symbol
+            if (this.activeSymbol === symbol) {
+                clientHub.broadcast('quant.analytics' as any, snapshot);
+            }
+
             logger.info({
+                symbol,
                 price: raw.currentPrice,
                 drift: raw.meta?.adjustedDrift,
             }, 'QuantEngine cycle complete');
         } catch (err) {
-            logger.error({ err, attempt }, 'QuantEngine cycle failed');
+            logger.error({ err, attempt, symbol }, 'QuantEngine cycle failed');
             if (attempt < MAX_RETRIES) {
                 this.isRunning = false;
-                setTimeout(() => this.runCycle(attempt + 1), 5000);
+                setTimeout(() => this.runCycle(symbol, attempt + 1), 5000);
                 return;
             }
-            clientHub.broadcast('quant.error' as any, {
-                ts: Date.now(),
-                message: String(err),
-                retryIn: INTERVAL,
-            });
+            if (this.activeSymbol === symbol) {
+                clientHub.broadcast('quant.error' as any, {
+                    ts: Date.now(),
+                    message: String(err),
+                    retryIn: INTERVAL,
+                });
+            }
         } finally {
             this.isRunning = false;
         }
     }
 
-    private fetchMacroData(): Promise<any> {
+    private fetchMacroData(symbol: string): Promise<any> {
         return new Promise((resolve, reject) => {
             let stdout = '';
             let stderr = '';
 
-            const proc = spawn(PYTHON_BIN, [SCRIPT_PATH], {
+            const proc = spawn(PYTHON_BIN, [SCRIPT_PATH, '--symbol', symbol], {
                 timeout: TIMEOUT,
                 env: { ...process.env },
             });

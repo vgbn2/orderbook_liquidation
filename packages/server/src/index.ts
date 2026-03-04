@@ -454,6 +454,8 @@ async function start(): Promise<void> {
                         startBitget(globalSymbol);
                         startGateio(globalSymbol);
 
+                        quantEngine.switchSymbol(globalSymbol);
+
                         binanceAdapter.switchSymbol(globalSymbol).then(() => {
                             binanceAdapter.fetchKlines(globalSymbol, '1m', 500).then(candles => {
                                 if (candles.length > 0) {

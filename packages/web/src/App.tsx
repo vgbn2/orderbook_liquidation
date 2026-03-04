@@ -24,6 +24,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSettingsStore } from './stores/settingsStore';
 import { useWebSocket } from './hooks/useWebSocket';
 import { ErrorBoundary } from './components/shared/ErrorBoundary.tsx';
+import { useDrawings } from './components/chart/hooks/useDrawings.ts';
 
 export function App() {
     const connected = useMarketDataStore(s => s.connected);
@@ -61,9 +62,13 @@ export function App() {
 
     // Chart Toolbar states
     const [activeTool, setActiveTool] = useState<DrawingTool>('none');
-    const [drawings, setDrawings] = useState<any[]>([]);
+    const {
+        drawings,
+        setDrawings,
+        selectedDrawingId: selectedDrawing,
+        setSelectedDrawingId: setSelectedDrawing
+    } = useDrawings(symbol);
     const [activeIndicators, setActiveIndicators] = useState<Set<IndicatorKey>>(new Set(['volume']));
-    const [selectedDrawing, setSelectedDrawing] = useState<string | null>(null);
 
     const toggleIndicator = useCallback((key: IndicatorKey) => {
         setActiveIndicators((prev) => {

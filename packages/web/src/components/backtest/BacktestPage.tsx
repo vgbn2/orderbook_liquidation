@@ -19,7 +19,9 @@ export function BacktestPage() {
         }}>
             {/* LEFT — strategy config (existing BacktestPanel component) */}
             <div style={{
-                width: 320,
+                width: '50%',
+                maxWidth: 800,
+                minWidth: 400,
                 borderRight: '1px solid var(--border-medium)',
                 flexShrink: 0,
                 overflowY: 'auto',
