@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { useDraggable } from '../hooks/useDraggable';
-import { useCandleStore } from '../stores/candleStore';
-import { runBacktest, BacktestResult } from '../lib/backtester';
-import { STRATEGY_PRESETS } from '../lib/strategyBuilder';
-import { EquityChart } from './EquityChart';
-import { DrawdownChart } from './backtest/DrawdownChart';
-import { parseCSVToTrades, calculateStatsFromTrades } from '../lib/tradeImporter';
-import { Button } from './UI';
+import { useDraggable } from '../../hooks/useDraggable';
+import { useCandleStore } from '../../stores/candleStore';
+import { runBacktest, BacktestResult } from '../../lib/backtester';
+import { STRATEGY_PRESETS } from '../../lib/strategyBuilder';
+import { EquityChart } from './EquityChart.tsx';
+import { DrawdownChart } from './DrawdownChart.tsx';
+import { parseCSVToTrades, calculateStatsFromTrades } from '../../lib/tradeImporter';
+import { Button } from '../shared/UI.tsx';
 
 export type PanelMode = 'DOCKED_TOP' | 'DOCKED_BOTTOM' | 'FLOATING' | 'COLLAPSED';
 
@@ -158,8 +158,6 @@ export function FloatingBacktestPanel({ onClose }: Props) {
                     left: 0,
                     width: '100%',
                     height: '40px',
-                    borderRadius: 0,
-                    borderLeft: 'none',
                     borderRight: 'none',
                     borderBottom: 'none',
                 };
@@ -415,4 +413,3 @@ const ctrlBtnStyle: React.CSSProperties = {
     alignItems: 'center',
     justifyContent: 'center'
 };
-

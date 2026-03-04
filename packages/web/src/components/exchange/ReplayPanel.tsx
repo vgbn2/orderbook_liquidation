@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMarketDataStore } from '../stores/marketDataStore';
+import { useMarketDataStore } from '../../stores/marketDataStore';
 
 interface PaperPosition {
     side: 'long' | 'short';
@@ -142,7 +142,7 @@ export function ReplayPanel() {
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <button className="toggle" onClick={() => setPaperMode(!paperMode)} style={{ background: paperMode ? 'var(--accent)' : 'var(--bg-overlay)', color: paperMode ? 'var(--bg-base)' : 'var(--text-muted)' }}>
+                            <button className="toggle" onClick={() => setPaperMode(!paperMode)} style={{ background: paperMode ? 'var(--accent)' : 'var(--bg-base)', color: paperMode ? 'var(--bg-base)' : 'var(--text-muted)' }}>
                                 {paperMode ? 'PAPER ON' : 'PAPER OFF'}
                             </button>
                         </div>

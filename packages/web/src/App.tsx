@@ -1,27 +1,29 @@
 import { useCandleStore } from './stores/candleStore';
 import { useMarketDataStore } from './stores/marketDataStore';
-import { Chart } from './components/Chart';
-import { TerminusNav } from './components/TerminusNav';
-import { FloatingBacktestPanel } from './components/FloatingBacktestPanel';
+import { Chart, IndicatorKey, DrawingTool } from './components/chart/Chart.tsx';
+import { TerminusNav } from './components/shared/TerminusNav.tsx';
+import { FloatingBacktestPanel } from './components/backtest/FloatingBacktestPanel.tsx';
 
-import { OptionsPanel } from './components/OptionsPanel';
-import { LiquidationPanel } from './components/LiquidationPanel';
-import { VWAFPanel } from './components/VWAFPanel';
-import { ConfluencePanel } from './components/ConfluencePanel';
-import { ReplayPanel } from './components/ReplayPanel';
-import { QuantPanel } from './components/QuantPanel';
-import { AlertManager } from './components/AlertManager';
-import { Toolbar } from './components/Toolbar';
-import { IndicatorKey, DrawingTool } from './components/Chart';
-import { ToastContainer, NotifMutedBadge } from './components/Toast';
-import { Orderbook } from './components/Orderbook';
-import { BacktestPage } from './components/BacktestPage';
-import { ExchangePage } from './components/ExchangePage';
-import { HTFBiasMonitor } from './components/HTFBiasMonitor';
+import { OptionsPanel } from './components/exchange/OptionsPanel.tsx';
+import { LiquidationPanel } from './components/exchange/LiquidationPanel.tsx';
+import { VWAFPanel } from './components/exchange/VWAFPanel.tsx';
+import { ConfluencePanel } from './components/exchange/ConfluencePanel.tsx';
+import { ReplayPanel } from './components/exchange/ReplayPanel.tsx';
+import { useLayoutResizer } from './hooks/useLayoutResizer';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useAppEvents } from './hooks/useAppEvents';
+import { QuantPanel } from './components/exchange/QuantPanel.tsx';
+import { AlertManager } from './components/shared/AlertManager.tsx';
+import { Toolbar } from './components/chart/Toolbar.tsx';
+import { ToastContainer, NotifMutedBadge } from './components/shared/Toast.tsx';
+import { Orderbook } from './components/exchange/Orderbook.tsx';
+import { BacktestPage } from './components/backtest/BacktestPage.tsx';
+import { ExchangePage } from './components/exchange/ExchangePage.tsx';
+import { HTFBiasMonitor } from './components/chart/HTFBiasMonitor.tsx';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSettingsStore } from './stores/settingsStore';
 import { useWebSocket } from './hooks/useWebSocket';
-import { ErrorBoundary } from './components/shared/ErrorBoundary';
+import { ErrorBoundary } from './components/shared/ErrorBoundary.tsx';
 
 export function App() {
     const connected = useMarketDataStore(s => s.connected);
@@ -97,44 +99,20 @@ export function App() {
         fetchHistorical(timeframe, symbol);
     }, [timeframe, symbol, showAggregated, fetchHistorical]);
 
-    // Keyboard shortcuts for view switching
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '')) return;
+    // ── Keyboard Shortcuts (Decentralized) ──
+    useKeyboardShortcuts({
+        currentView,
+        setView,
+        exchangeView,
+        setExchangeView
+    });
 
-            if (e.key === '1') {
-                setView('chart');
-            } else if (e.key === '2') {
-                setView('backtest');
-            } else if (e.key === '3') {
-                const exchanges = ['binance', 'bybit', 'okx', 'hyperliquid', 'mexc', 'bitget', 'gateio'] as const;
-                const idx = exchanges.indexOf(exchangeView);
-                setExchangeView(exchanges[(idx + 1) % exchanges.length]);
-                setView('exchange');
-            } else if (e.key === 'Escape' && currentView !== 'chart') {
-                setView('chart');
-            }
-        };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [currentView, setView]);
-
-    // Alert listener
-    useEffect(() => {
-        const handler = () => setShowAlertPanel(true);
-        window.addEventListener('TERMINUS_SHOW_ALERTS', handler);
-        return () => window.removeEventListener('TERMINUS_SHOW_ALERTS', handler);
-    }, []);
-
-    // Symbol switch confirmation listener
-    useEffect(() => {
-        const handler = (e: Event) => {
-            const { symbol: confirmedSym } = (e as CustomEvent).detail;
-            fetchHistorical(timeframe, confirmedSym);
-        };
-        window.addEventListener('terminus_symbol_confirmed', handler);
-        return () => window.removeEventListener('terminus_symbol_confirmed', handler);
-    }, [timeframe, fetchHistorical]);
+    // ── App Event Listeners (Decentralized) ──
+    useAppEvents({
+        setShowAlertPanel,
+        fetchHistorical,
+        timeframe
+    });
 
     // Timeout fallback for loading
     useEffect(() => {
@@ -143,52 +121,16 @@ export function App() {
         return () => clearTimeout(t);
     }, [candles.length]);
 
-    // ── Resizer Logic ──
-    const [isResizing, setIsResizing] = useState(false);
-    const [isVResizing, setIsVResizing] = useState(false);
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
-        setIsResizing(true);
-        e.preventDefault();
-    }, []);
-
-    const handleVMouseDown = useCallback((e: React.MouseEvent) => {
-        setIsVResizing(true);
-        e.preventDefault();
-    }, []);
-
-    useEffect(() => {
-        if (!isResizing && !isVResizing) return;
-
-        const handleMouseMove = (e: MouseEvent) => {
-            if (isResizing) {
-                // Right panel width adjustment using functional update
-                setRightPanelWidth(w => {
-                    const next = window.innerWidth - e.clientX;
-                    if (next > 200 && next < 800) return next;
-                    return w;
-                });
-            } else if (isVResizing) {
-                // Orderbook height adjustment using movement delta (with bounds)
-                setOrderbookHeight(h => {
-                    const next = h + e.movementY;
-                    if (next > 100 && next < window.innerHeight - 200) return next;
-                    return h;
-                });
-            }
-        };
-
-        const handleMouseUp = () => {
-            setIsResizing(false);
-            setIsVResizing(false);
-        };
-
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, [isResizing, isVResizing, setRightPanelWidth, setOrderbookHeight]);
+    // ── Resizer Logic (Decentralized) ──
+    const {
+        isResizing,
+        isVResizing,
+        handleMouseDown,
+        handleVMouseDown
+    } = useLayoutResizer({
+        setRightPanelWidth,
+        setOrderbookHeight
+    });
 
     return (
         <div className="app-layout" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
@@ -354,7 +296,9 @@ export function App() {
                         display: currentView === 'backtest' ? 'flex' : 'none',
                         flex: 1, overflow: 'hidden'
                     }}>
-                        <BacktestPage />
+                        <ErrorBoundary name="BacktestPage">
+                            <BacktestPage />
+                        </ErrorBoundary>
                     </div>
                 )}
 
@@ -364,7 +308,9 @@ export function App() {
                         display: currentView === 'exchange' ? 'flex' : 'none',
                         flex: 1, overflow: 'hidden'
                     }}>
-                        <ExchangePage exchange={exchangeView} />
+                        <ErrorBoundary name="ExchangePage">
+                            <ExchangePage exchange={exchangeView} />
+                        </ErrorBoundary>
                     </div>
                 )}
 

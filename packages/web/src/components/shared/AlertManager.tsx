@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useMarketDataStore } from '../stores/marketDataStore';
+import { useMarketDataStore } from '../../stores/marketDataStore';
 
 export function AlertManager({ onClose }: { onClose: () => void }) {
     const storeAlerts = useMarketDataStore(s => s.activeAlerts);

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useEffect } from 'react';
-import { useMarketDataStore } from '../stores/marketDataStore';
+import { useMarketDataStore } from '../../stores/marketDataStore';
 
 // ── Gaussian bell curve helper ──────────────────────────────────────────────
 function gaussian(x: number, mean: number, std: number): number {

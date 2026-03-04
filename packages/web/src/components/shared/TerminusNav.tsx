@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { useCandleStore } from "../stores/candleStore";
-import { useMarketDataStore } from "../stores/marketDataStore";
-import { useSettingsStore } from "../stores/settingsStore";
-import { SettingsPopover } from "./SettingsPopover";
-import { showToast } from "./Toast";
+import { useCandleStore } from "../../stores/candleStore";
+import { useMarketDataStore } from "../../stores/marketDataStore";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { SettingsPopover } from "./SettingsPopover.tsx";
+import { showToast } from "./Toast.tsx";
 
 
 // ─── DATA ─────────────────────────────────────────────────────
@@ -803,12 +803,14 @@ export function TerminusNav() {
                 />
             )}
 
-            {/* ── SETTINGS POPOVER ─────────────────────────────────────── */}
-            <SettingsPopover
-                isOpen={settingsOpen}
-                onClose={() => setSettingsOpen(false)}
-                anchorEl={settingsBtnRef.current}
-            />
+            {/* ── SETTINGS POPOVER ───────────────────────────────── */}
+            {settingsOpen && (
+                <SettingsPopover
+                    anchor={settingsBtnRef.current!}
+                    onClose={() => setSettingsOpen(false)}
+                />
+            )}
         </div>
     );
 }
+

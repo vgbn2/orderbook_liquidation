@@ -3,17 +3,17 @@ import { createChart, ColorType, CrosshairMode } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 
 // Stores
-import { useCandleStore } from '../stores/candleStore';
-import { useMarketDataStore } from '../stores/marketDataStore';
+import { useCandleStore } from '../../stores/candleStore';
+import { useMarketDataStore } from '../../stores/marketDataStore';
 
 // Hooks & Plugins
-import { useDrawings as useDrawingsHook, DrawingTool, Drawing } from './chart/hooks/useDrawings';
-import { runOverlays } from './chart/overlays';
-import './chart/overlays'; // Auto-registers plugins
+import { useDrawings as useDrawingsHook, DrawingTool, Drawing } from './hooks/useDrawings';
+import { runOverlays } from './overlays';
+import './overlays'; // Auto-registers plugins
 
 // Components
-import { ErrorBoundary } from './shared/ErrorBoundary';
-import { PerfStats } from './PerfStats';
+import { ErrorBoundary } from '../shared/ErrorBoundary.tsx';
+import { PerfStats } from '../shared/PerfStats.tsx';
 
 export type { DrawingTool, Drawing };
 

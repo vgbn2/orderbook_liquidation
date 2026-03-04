@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, IChartApi, ISeriesApi, Time, ColorType } from 'lightweight-charts';
-import { BacktestResult } from '../lib/backtester';
+import { BacktestResult } from '../../lib/backtester';
 
 interface EquityChartProps {
     result: BacktestResult;
@@ -122,4 +122,3 @@ export function EquityChart({ result, height = 200 }: EquityChartProps) {
         </div>
     );
 }
-

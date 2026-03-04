@@ -1,5 +1,5 @@
-import { useCandleStore } from '../stores/candleStore';
-import { useMarketDataStore } from '../stores/marketDataStore';
+import { useCandleStore } from '../../stores/candleStore';
+import { useMarketDataStore } from '../../stores/marketDataStore';
 import { useRef, useEffect } from 'react';
 
 // Also need to get EXCHANGE_CONFIG and Props
@@ -276,7 +276,7 @@ function DepthCurveChart({ orderbook }: {
                     <stop offset="0%" stop-color="var(--color-positive)" stop-opacity="0.4"/>
                     <stop offset="100%" stop-color="var(--color-positive)" stop-opacity="0.05"/>
                 </linearGradient>
-                <linearGradient id="askGrad" x1="0" x2="0" y1="0" y2="1">
+                <linearGradient id="maskGrad" x1="0" x2="0" y1="0" y2="1">
                     <stop offset="0%" stop-color="var(--color-negative)" stop-opacity="0.4"/>
                     <stop offset="100%" stop-color="var(--color-negative)" stop-opacity="0.05"/>
                 </linearGradient>

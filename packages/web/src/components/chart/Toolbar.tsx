@@ -1,8 +1,8 @@
 import { useState, useRef } from "react";
-import { usePerfStore } from "../stores/usePerfStore";
-import { useCandleStore } from "../stores/candleStore";
-import { useSettingsStore } from "../stores/settingsStore";
-import { SettingsPopover } from "./SettingsPopover";
+import { usePerfStore } from "../../stores/usePerfStore";
+import { useCandleStore } from "../../stores/candleStore";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { SettingsPopover } from "./SettingsPopover.tsx";
 
 interface Props {
     activeTool: string;

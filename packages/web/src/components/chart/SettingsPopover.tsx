@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react';
-import { useSettingsStore } from '../stores/settingsStore';
-import { showToast } from './Toast';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { showToast } from '../shared/Toast.tsx';
 
 interface SettingsPopoverProps {
     isOpen: boolean;

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useCandleStore } from '../stores/candleStore';
-import { CandleData } from '../types';
-import { runBacktest, BacktestResult } from '../lib/backtester';
-import { STRATEGY_PRESETS } from '../lib/strategyBuilder';
-import { EquityChart } from './EquityChart';
-import { parseCSVToTrades, calculateStatsFromTrades } from '../lib/tradeImporter';
-import { Button, PanelSection, StatCard } from './UI';
+import { useCandleStore } from '../../stores/candleStore';
+import { CandleData } from '../../types';
+import { runBacktest, BacktestResult } from '../../lib/backtester';
+import { STRATEGY_PRESETS } from '../../lib/strategyBuilder';
+import { EquityChart } from './EquityChart.tsx';
+import { parseCSVToTrades, calculateStatsFromTrades } from '../../lib/tradeImporter';
+import { Button, PanelSection, StatCard } from '../shared/UI.tsx';
 
 const DEFAULT_STRATEGY = `{
   "name": "SMA Crossover",
@@ -22,7 +22,9 @@ const DEFAULT_STRATEGY = `{
   "holdingFeePct": 0.001,
   "minDrawdownThresholdPct": 0.5,
   "slippagePct": 0.1
-}`; interface Props {
+}`;
+
+interface Props {
     onResult?: (result: BacktestResult | null) => void;
 }
 
@@ -229,29 +231,29 @@ export function BacktestPanel({ onResult }: Props = {}) {
                         }}>
                             <StatCard
                                 label="FINAL BALANCE"
-                                value={`$${result.finalBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                value={`$${(result.finalBalance || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                             />
                             <StatCard
                                 label="NET RETURN"
-                                value={`${result.netReturnPct >= 0 ? '+' : ''}${result.netReturnPct.toFixed(1)}%`}
-                                trend={result.netReturnPct >= 0 ? 'up' : 'down'}
+                                value={`${(result.netReturnPct || 0) >= 0 ? '+' : ''}${(result.netReturnPct || 0).toFixed(1)}%`}
+                                trend={(result.netReturnPct || 0) >= 0 ? 'up' : 'down'}
                             />
                             <StatCard
                                 label="VS BUY & HOLD"
-                                value={`${(result.netReturnPct - result.bahReturnPct) >= 0 ? '+' : ''}${(result.netReturnPct - result.bahReturnPct).toFixed(1)}%`}
-                                trend={(result.netReturnPct - result.bahReturnPct) >= 0 ? 'up' : 'down'}
+                                value={`${((result.netReturnPct || 0) - (result.bahReturnPct || 0)) >= 0 ? '+' : ''}${((result.netReturnPct || 0) - (result.bahReturnPct || 0)).toFixed(1)}%`}
+                                trend={((result.netReturnPct || 0) - (result.bahReturnPct || 0)) >= 0 ? 'up' : 'down'}
                             />
                             <StatCard
                                 label="SHARPE RATIO"
-                                value={result.sharpeRatio.toFixed(2)}
+                                value={(result.sharpeRatio || 0).toFixed(2)}
                             />
                             <StatCard
                                 label="SORTINO RATIO"
-                                value={result.sortinoRatio.toFixed(2)}
+                                value={(result.sortinoRatio || 0).toFixed(2)}
                             />
                             <StatCard
                                 label="TOTAL FEES"
-                                value={`-$${result.totalFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                                value={`-$${(result.totalFees || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                                 trend="down"
                             />
                         </div>
@@ -267,16 +269,16 @@ export function BacktestPanel({ onResult }: Props = {}) {
                         }}>
                             <StatCard
                                 label="MAX DD"
-                                value={`${result.maxDrawdown.toFixed(1)}%`}
+                                value={`${(result.maxDrawdown || 0).toFixed(1)}%`}
                                 trend="down"
                             />
                             <StatCard
                                 label="TRADES"
-                                value={result.totalTrades.toString()}
+                                value={(result.totalTrades || 0).toString()}
                             />
                             <StatCard
                                 label="WIN RATE"
-                                value={`${result.winRate.toFixed(1)}%`}
+                                value={`${(result.winRate || 0).toFixed(1)}%`}
                             />
                         </div>
 
@@ -309,4 +311,3 @@ export function BacktestPanel({ onResult }: Props = {}) {
         </PanelSection >
     );
 }
-

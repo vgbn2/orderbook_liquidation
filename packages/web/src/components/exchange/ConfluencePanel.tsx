@@ -1,5 +1,5 @@
-import { useMarketDataStore } from '../stores/marketDataStore';
-import { PanelSection, Badge } from './UI';
+import { useMarketDataStore } from '../../stores/marketDataStore';
+import { PanelSection, Badge } from '../shared/UI.tsx';
 
 const SIGNAL_ICONS: Record<string, string> = {
     OB_BID_WALL: '🟢',
@@ -73,7 +73,7 @@ export function ConfluencePanel() {
                                 {zone.reasons.map((r, j) => (
                                     <span key={j} style={{
                                         fontSize: '9px',
-                                        color: 'var(--color-text-primary)',
+                                        color: 'var(--text-primary)',
                                         background: 'var(--color-bg-overlay)',
                                         padding: '2px 6px',
                                         borderRadius: '2px',

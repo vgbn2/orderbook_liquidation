@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
-import { BacktestPanel } from './BacktestPanel';
-import { BacktestResult } from '../lib/backtester';
-import { EquityChart } from './EquityChart';
-import { DrawdownChart } from './backtest/DrawdownChart';
-import { MonthlyHeatmap } from './backtest/MonthlyHeatmap';
-import { StatCard } from './UI';
+import { BacktestPanel } from './BacktestPanel.tsx';
+import { BacktestResult } from '../../lib/backtester';
+import { EquityChart } from './EquityChart.tsx';
+import { DrawdownChart } from './DrawdownChart.tsx';
+import { MonthlyHeatmap } from './MonthlyHeatmap.tsx';
+import { StatCard } from '../shared/UI.tsx';
 
 export function BacktestPage() {
     const [result, setResult] = useState<BacktestResult | null>(null);
@@ -145,20 +145,20 @@ function OverviewTab({ result }: { result: BacktestResult }) {
                 <div>
                     <div className="label" style={{ marginBottom: 12 }}>PERFORMANCE</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <StatCard label="NET RETURN" value={`${result.netReturnPct >= 0 ? '+' : ''}${result.netReturnPct.toFixed(2)}%`} trend={result.netReturnPct >= 0 ? 'up' : 'down'} />
-                        <StatCard label="NET PNL" value={`$${result.netPnL.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} trend={result.netPnL >= 0 ? 'up' : 'down'} />
-                        <StatCard label="B&H RETURN" value={`${result.bahReturnPct >= 0 ? '+' : ''}${result.bahReturnPct.toFixed(2)}%`} />
-                        <StatCard label="ALPHA (VS B&H)" value={`${result.alpha >= 0 ? '+' : ''}${result.alpha.toFixed(2)}%`} trend={result.alpha >= 0 ? 'up' : 'down'} />
+                        <StatCard label="NET RETURN" value={`${(result.netReturnPct || 0) >= 0 ? '+' : ''}${(result.netReturnPct || 0).toFixed(2)}%`} trend={(result.netReturnPct || 0) >= 0 ? 'up' : 'down'} />
+                        <StatCard label="NET PNL" value={`$${(result.netPnL || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} trend={(result.netPnL || 0) >= 0 ? 'up' : 'down'} />
+                        <StatCard label="B&H RETURN" value={`${(result.bahReturnPct || 0) >= 0 ? '+' : ''}${(result.bahReturnPct || 0).toFixed(2)}%`} />
+                        <StatCard label="ALPHA (VS B&H)" value={`${(result.alpha || 0) >= 0 ? '+' : ''}${(result.alpha || 0).toFixed(2)}%`} trend={(result.alpha || 0) >= 0 ? 'up' : 'down'} />
                     </div>
                 </div>
 
                 <div>
                     <div className="label" style={{ marginBottom: 12 }}>RISK / DRAWDOWN</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <StatCard label="SHARPE RATIO" value={result.sharpeRatio.toFixed(2)} />
-                        <StatCard label="SORTINO RATIO" value={result.sortinoRatio.toFixed(2)} />
-                        <StatCard label="MAX BALANCE DRAWDOWN" value={`-${result.maxDrawdown.toFixed(2)}%`} trend="down" />
-                        <StatCard label="MAX PROFIT DRAWDOWN" value={`-$${result.maxProfitDrawdown.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${result.maxProfitDrawdownPct.toFixed(1)}%)`} trend="down" />
+                        <StatCard label="SHARPE RATIO" value={(result.sharpeRatio || 0).toFixed(2)} />
+                        <StatCard label="SORTINO RATIO" value={(result.sortinoRatio || 0).toFixed(2)} />
+                        <StatCard label="MAX BALANCE DRAWDOWN" value={`-${(result.maxDrawdown || 0).toFixed(2)}%`} trend="down" />
+                        <StatCard label="MAX PROFIT DRAWDOWN" value={`-$${(result.maxProfitDrawdown || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} (${(result.maxProfitDrawdownPct || 0).toFixed(1)}%)`} trend="down" />
                         <StatCard label="PROFIT FACTOR" value={profitFactor === Infinity ? 'INF' : profitFactor.toFixed(2)} />
                     </div>
                 </div>

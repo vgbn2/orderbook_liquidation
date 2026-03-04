@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useSettingsStore } from '../stores/settingsStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 export type ToastType = 'info' | 'success' | 'warn' | 'error';
 export type ToastTier = 'system' | 'alert';

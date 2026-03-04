@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { useCandleStore } from '../stores/candleStore';
-import { computeHTFBias } from '../lib/htfBias';
+import { useCandleStore } from '../../stores/candleStore';
+import { computeHTFBias } from '../../lib/htfBias';
 
 export function HTFBiasMonitor() {
     const { htfCandles, htfBias, setHtfBias } = useCandleStore();

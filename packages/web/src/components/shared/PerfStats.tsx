@@ -1,6 +1,6 @@
 import React from 'react';
-import { usePerfStore } from '../stores/usePerfStore';
-import { useStrain } from '../hooks/useStrain';
+import { usePerfStore } from '../../stores/usePerfStore';
+import { useStrain } from '../../hooks/useStrain';
 
 /**
  * PerfStats — Real-time performance HUD

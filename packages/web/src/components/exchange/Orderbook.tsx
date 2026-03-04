@@ -1,4 +1,4 @@
-import { useMarketDataStore } from '../stores/marketDataStore';
+import { useMarketDataStore } from '../../stores/marketDataStore';
 
 export function Orderbook() {
     const { orderbook } = useMarketDataStore();

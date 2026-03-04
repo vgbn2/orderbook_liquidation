@@ -1,4 +1,4 @@
-import { useMarketDataStore } from '../stores/marketDataStore';
+import { useMarketDataStore } from '../../stores/marketDataStore';
 
 export function OptionsPanel() {
     const options = useMarketDataStore((s) => s.options);
