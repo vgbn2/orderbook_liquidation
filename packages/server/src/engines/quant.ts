@@ -1,39 +1,16 @@
-import { spawn, execSync } from 'child_process';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { existsSync } from 'fs';
 import { logger } from '../logger.js';
+import { redis } from '../db/redis.js';
 import { clientHub } from '../ws/client-hub.js';
+import { binanceAdapter } from '../adapters/binance.js';
+import yahooFinance from 'yahoo-finance2';
+import { computeQuantAnalytics, MacroPrices } from './quantMath.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const SCRIPT_PATH = join(__dirname, '../../scripts/fetch_macro.py');
-
-const INTERVAL = 60 * 60 * 1000; // 1 hour
+const INTERVAL = 30 * 60 * 1000; // 30 minutes
 const MAX_RETRIES = 3;
-const TIMEOUT = 60_000; // 60s for Python
-
-function findPythonBinary(): string {
-    const candidates = ['python3', 'python', 'python3.11', 'python3.10'];
-    for (const candidate of candidates) {
-        try {
-            const result = execSync(`${candidate} --version`, { stdio: 'pipe' }).toString();
-            if (result.includes('Python 3')) {
-                return candidate;
-            }
-        } catch {
-            continue;
-        }
-    }
-    throw new Error('No Python 3 interpreter found in PATH');
-}
-
-const VENV_PYTHON = join(__dirname, '../../scripts/venv/bin/python3');
-const PYTHON_BIN = existsSync(VENV_PYTHON) ? VENV_PYTHON : findPythonBinary();
 
 export interface QuantSnapshot {
     symbol: string;
-    ts: number;
+    timestamp: number;
     currentPrice: number;
     meta: {
         baseDrift: number;
@@ -45,14 +22,6 @@ export interface QuantSnapshot {
     kalman: number[];
     dates: string[];
     projections: number[];
-    cones: Array<{
-        step: number;
-        center: number;
-        upper1: number;
-        lower1: number;
-        upper2: number;
-        lower2: number;
-    }>;
     sigmaGrid: Array<{
         sigma: number;
         price: number;
@@ -71,30 +40,61 @@ export interface QuantSnapshot {
 class QuantEngine {
     private cache: Map<string, QuantSnapshot> = new Map();
     private activeSymbol = 'BTCUSDT';
-    private isRunning = false;
+    private runningSymbols = new Set<string>();
     private timer: ReturnType<typeof setInterval> | null = null;
+
+    // Default list of macro assets used for drag calculation
+    private readonly MACRO_ASSETS = ['DX-Y.NYB', '^TNX', '^GSPC'];
 
     getLastSnapshot(symbol?: string): QuantSnapshot | null {
         return this.cache.get(symbol || this.activeSymbol) || null;
     }
 
-    switchSymbol(newSymbol: string) {
+    async switchSymbol(newSymbol: string) {
         if (this.activeSymbol === newSymbol) return;
         this.activeSymbol = newSymbol;
 
         const cached = this.cache.get(newSymbol);
         if (cached) {
-            clientHub.broadcast('quant.analytics' as any, cached);
+            clientHub.broadcast(`quant.analytics.${newSymbol}` as any, cached);
         } else {
+            // Try Redis cache first
+            try {
+                const redisCached = await redis.get(`quant:analytics:${newSymbol}`);
+                if (redisCached) {
+                    const snap = JSON.parse(redisCached) as QuantSnapshot;
+                    this.cache.set(newSymbol, snap);
+                    clientHub.broadcast(`quant.analytics.${newSymbol}` as any, snap);
+                    return; // Don't run cycle immediately if found in redis
+                }
+            } catch (err) {
+                logger.warn({ err }, `QuantEngine: Failed to read redis cache for ${newSymbol}`);
+            }
+
             // Trigger run for new symbol
             this.runCycle(newSymbol, 1);
         }
     }
 
-    start(initialSymbol = 'BTCUSDT') {
+    async start(initialSymbol = 'BTCUSDT') {
         this.activeSymbol = initialSymbol;
-        logger.info(`QuantEngine starting for ${this.activeSymbol} — first cycle now, then every 1hr`);
+
+        // Try to load latest from Redis to populate cache immediately
+        try {
+            const cached = await redis.get(`quant:analytics:${initialSymbol}`);
+            if (cached) {
+                const snapshot = JSON.parse(cached) as QuantSnapshot;
+                this.cache.set(snapshot.symbol, snapshot);
+                logger.debug({ symbol: snapshot.symbol }, 'QuantEngine: Loaded initial snapshot from Redis');
+            }
+        } catch (err) {
+            logger.warn({ err }, 'QuantEngine: Failed to load initial snapshot from Redis');
+        }
+
+        logger.info(`QuantEngine started. Primary symbol: ${this.activeSymbol}`);
         this.runCycle(this.activeSymbol);
+
+        // Setup recurring cycle for the currently active symbol
         this.timer = setInterval(() => this.runCycle(this.activeSymbol), INTERVAL);
     }
 
@@ -106,36 +106,36 @@ class QuantEngine {
     }
 
     private async runCycle(symbol: string, attempt = 1): Promise<void> {
-        if (this.isRunning) {
-            logger.debug('QuantEngine: previous cycle still running, skipping');
+        if (this.runningSymbols.has(symbol)) {
+            logger.debug({ symbol }, 'QuantEngine: cycle already running for symbol, skipping');
             return;
         }
-        this.isRunning = true;
+        this.runningSymbols.add(symbol);
 
         try {
-            const raw = await this.fetchMacroData(symbol);
-            if (raw.error) {
-                throw new Error(raw.error);
-            }
-
-            const snapshot = raw as QuantSnapshot;
-            snapshot.symbol = symbol;
+            const snapshot = await this.fetchMacroData(symbol);
             this.cache.set(symbol, snapshot);
 
-            // Only broadcast if this is still the active symbol
+            // Persist to Redis
+            await redis.set(`quant:analytics:${symbol}`, JSON.stringify(snapshot), 'EX', 7200); // 2hr TTL
+
+            // Always broadcast on topic namespaced by symbol
+            clientHub.broadcast(`quant.analytics.${symbol}` as any, snapshot);
+
+            // For backward compatibility while UI connects, also broadcast on default topic if it's the active one
             if (this.activeSymbol === symbol) {
                 clientHub.broadcast('quant.analytics' as any, snapshot);
             }
 
             logger.info({
                 symbol,
-                price: raw.currentPrice,
-                drift: raw.meta?.adjustedDrift,
+                price: snapshot.currentPrice,
+                drift: snapshot.meta.adjustedDrift,
             }, 'QuantEngine cycle complete');
         } catch (err) {
             logger.error({ err, attempt, symbol }, 'QuantEngine cycle failed');
             if (attempt < MAX_RETRIES) {
-                this.isRunning = false;
+                this.runningSymbols.delete(symbol);
                 setTimeout(() => this.runCycle(symbol, attempt + 1), 5000);
                 return;
             }
@@ -147,39 +147,47 @@ class QuantEngine {
                 });
             }
         } finally {
-            this.isRunning = false;
+            this.runningSymbols.delete(symbol);
         }
     }
 
-    private fetchMacroData(symbol: string): Promise<any> {
-        return new Promise((resolve, reject) => {
-            let stdout = '';
-            let stderr = '';
+    private async fetchMacroData(symbol: string): Promise<QuantSnapshot> {
+        // Look back roughly 180 days
+        const limit = 180;
+        const now = new Date();
+        const period1Str = new Date(now.getTime() - limit * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-            const proc = spawn(PYTHON_BIN, [SCRIPT_PATH, '--symbol', symbol], {
-                timeout: TIMEOUT,
-                env: { ...process.env },
-            });
+        // 1. Fetch target symbol klines
+        const cryptoKlines = await binanceAdapter.fetchKlines(symbol, '1d', limit);
+        if (cryptoKlines.length < 30) {
+            throw new Error(`Insufficient crypto data for ${symbol}`);
+        }
 
-            proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-            proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+        const prices = cryptoKlines.map(k => k.close);
+        const dates = cryptoKlines.map(k => new Date(k.time * 1000).toISOString().split('T')[0]);
 
-            proc.on('close', (code) => {
-                if (code !== 0) {
-                    reject(new Error(`Python exited ${code}: ${stderr.slice(0, 500)}`));
-                    return;
+        // 2. Fetch Macro indices
+        const macroPrices: MacroPrices = {};
+        for (const [idx, ticker] of this.MACRO_ASSETS.entries()) {
+            try {
+                // To avoid rate limits, small delay
+                if (idx > 0) await new Promise(r => setTimeout(r, 200));
+
+                const data = await yahooFinance.historical(ticker, {
+                    period1: period1Str,
+                    interval: '1d'
+                }) as Array<{ close: number }>;
+
+                if (data && data.length > 0) {
+                    macroPrices[ticker] = data.map((d) => d.close);
                 }
-                try {
-                    resolve(JSON.parse(stdout));
-                } catch {
-                    reject(new Error(`Invalid JSON from Python: ${stdout.slice(0, 200)}`));
-                }
-            });
+            } catch (err) {
+                logger.warn({ err, ticker }, 'Failed to fetch macro ticker');
+            }
+        }
 
-            proc.on('error', (err) => {
-                reject(new Error(`Failed to spawn Python: ${err.message}`));
-            });
-        });
+        // 3. Run pure TS analytics
+        return computeQuantAnalytics(symbol, prices, dates, macroPrices);
     }
 }
 

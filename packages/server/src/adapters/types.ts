@@ -190,7 +190,7 @@ export type WSTopic =
     | `trades`
     | `replay`
     | `alerts`
-    | `quant.analytics`
+    | `quant.analytics.${string}`
     | `quant.error`
     | 'funding_rate'
     | 'open_interest'

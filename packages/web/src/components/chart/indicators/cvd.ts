@@ -1,5 +1,4 @@
-import { ISeriesApi, Time } from 'lightweight-charts';
-import { CandleData } from '../../../types';
+import { Time } from 'lightweight-charts';
 import { IndicatorModule } from './vwap';
 
 /**

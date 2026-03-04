@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CandleData } from './marketStore';
+import type { CandleData } from '../types';
 
 interface ChartDataState {
     historicalData: CandleData[];

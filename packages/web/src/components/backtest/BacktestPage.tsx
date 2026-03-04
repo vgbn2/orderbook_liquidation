@@ -8,7 +8,7 @@ import { StatCard } from '../shared/UI.tsx';
 
 export function BacktestPage() {
     const [result, setResult] = useState<BacktestResult | null>(null);
-    const [leftWidth, setLeftWidth] = useState(600);
+    const [leftWidth, setLeftWidth] = useState(850);
     const [isResizing, setIsResizing] = useState(false);
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -21,7 +21,7 @@ export function BacktestPage() {
 
         const handleMouseMove = (e: MouseEvent) => {
             const next = e.clientX;
-            if (next > 400 && next < 800) {
+            if (next > 400 && next < 1200) {
                 setLeftWidth(next);
             }
         };

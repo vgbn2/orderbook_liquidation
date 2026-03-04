@@ -36,7 +36,9 @@ export default function StrategyBuilder({
         buyCondition: shared.buyCondition,
         sellCondition: shared.sellCondition,
         stopLossPct: shared.stopLoss,
+        stopLossExpr: shared.slExpr,
         takeProfitPct: shared.takeProfit,
+        takeProfitExpr: shared.tpExpr,
         entryFeePct: shared.entryFee,
         exitFeePct: shared.exitFee,
         slippagePct: shared.slippage,
@@ -50,26 +52,26 @@ export default function StrategyBuilder({
     <div style={{ background: "#0a0a0f", minHeight: "100vh", fontFamily: "'JetBrains Mono','Courier New',monospace", color: "#e0e0f0", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{ borderBottom: "1px solid rgba(0,255,200,0.1)", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(0,255,200,0.015)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ color: "#00ffc8", fontSize: 10, letterSpacing: "0.2em" }}>◈ TERMINUS — STRATEGY BUILDER</span>
-          <span style={{ fontSize: 8, padding: "2px 7px", background: "rgba(0,255,200,0.1)", border: "1px solid rgba(0,255,200,0.2)", color: "#00ffc8", letterSpacing: "0.15em" }}>BETA</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ color: "var(--accent)", fontSize: "var(--text-sm)", letterSpacing: "0.25em", fontWeight: 700 }}>◈ TERMINUS — STRATEGY BUILDER</span>
+          <span style={{ fontSize: "var(--text-xs)", padding: "2px 8px", background: "var(--accent-dim)", border: "1px solid var(--accent-border)", color: "var(--accent)", letterSpacing: "0.15em", fontWeight: 700 }}>BETA</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           {/* Quick Settings */}
-          <div style={{ display: "flex", gap: 12, alignItems: "center", paddingRight: 16, borderRight: "1px solid rgba(255,255,255,0.05)" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <span style={{ fontSize: 8, color: "#4a4a60" }}>TIMEFRAME</span>
+          <div style={{ display: "flex", gap: 14, alignItems: "center", paddingRight: 16, borderRight: "1px solid var(--border-subtle)" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", opacity: 0.6, fontWeight: 700 }}>TIMEFRAME</span>
               <select
                 value={timeframe}
                 onChange={(e) => setTimeframe?.(e.target.value)}
-                style={{ background: "transparent", border: "none", color: "#8b8ba0", fontSize: 10, outline: "none", cursor: "pointer" }}
+                style={{ background: "transparent", border: "none", color: "var(--text-secondary)", fontSize: "var(--text-sm)", outline: "none", cursor: "pointer", fontWeight: 600 }}
               >
                 {["1m", "5m", "15m", "1h", "4h", "1d"].map(tf => <option key={tf} value={tf}>{tf}</option>)}
               </select>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <span style={{ fontSize: 8, color: "#4a4a60" }}>DURATION</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", opacity: 0.6, fontWeight: 700 }}>DURATION</span>
               <select
                 value={backtestDays?.toString() || "null"}
                 onChange={(e) => {
@@ -78,7 +80,7 @@ export default function StrategyBuilder({
                   else if (val === "all") setBacktestDays?.("all");
                   else setBacktestDays?.(parseInt(val));
                 }}
-                style={{ background: "transparent", border: "none", color: "#8b8ba0", fontSize: 10, outline: "none", cursor: "pointer" }}
+                style={{ background: "transparent", border: "none", color: "var(--text-secondary)", fontSize: "var(--text-sm)", outline: "none", cursor: "pointer", fontWeight: 600 }}
               >
                 <option value="null">Chart Data</option>
                 <option value="7">7 Days</option>
@@ -125,18 +127,20 @@ export default function StrategyBuilder({
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             background: "transparent", border: "none",
-            borderBottom: tab === t.id ? "2px solid #00ffc8" : "2px solid transparent",
-            color: tab === t.id ? "#00ffc8" : "#3a3a50",
-            fontSize: 10, padding: "12px 18px", cursor: "pointer",
+            borderBottom: tab === t.id ? "2px solid var(--accent)" : "2px solid transparent",
+            color: tab === t.id ? "var(--accent)" : "var(--text-muted)",
+            fontSize: "var(--text-sm)", padding: "14px 20px", cursor: "pointer",
             letterSpacing: "0.12em", fontFamily: "inherit", transition: "color 0.15s",
-            display: "flex", alignItems: "center", gap: 7, flexShrink: 0,
+            display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
+            fontWeight: 700,
           }}>
             <span>{t.icon} {t.label}</span>
             <span style={{
-              fontSize: 8, padding: "1px 5px",
+              fontSize: "var(--text-xs)", padding: "2px 6px",
               background: tab === t.id ? `${BADGE_COLOR[t.badge]}18` : "rgba(255,255,255,0.03)",
-              color: tab === t.id ? BADGE_COLOR[t.badge] : "#2a2a3a",
-              border: `1px solid ${tab === t.id ? BADGE_COLOR[t.badge] + "30" : "rgba(255,255,255,0.04)"}`,
+              color: tab === t.id ? BADGE_COLOR[t.badge] : "var(--text-muted)",
+              border: `1px solid ${tab === t.id ? BADGE_COLOR[t.badge] + "40" : "var(--border-subtle)"}`,
+              fontWeight: 700,
             }}>
               {t.badge}
             </span>

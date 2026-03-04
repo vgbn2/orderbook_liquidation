@@ -2,17 +2,17 @@ import { ReactNode } from "react";
 
 export const inputStyle = {
   background: "rgba(0,0,0,0.35)",
-  border: "1px solid rgba(255,255,255,0.08)",
+  border: "1px solid var(--border-medium)",
   outline: "none",
-  color: "#c0c0d0",
-  fontSize: 10,
-  fontFamily: "'JetBrains Mono','Courier New',monospace",
-  padding: "4px 8px",
+  color: "var(--text-primary)",
+  fontSize: "var(--text-md)",
+  fontFamily: "var(--font)",
+  padding: "4px 10px",
 } as const;
 
 export function SectionLabel({ children, style = {} }: { children: ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ fontSize: 9, color: "#3a3a50", letterSpacing: "0.15em", marginBottom: 8, ...style }}>
+    <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", letterSpacing: "0.15em", marginBottom: 10, fontWeight: 700, ...style }}>
       {children}
     </div>
   );
@@ -20,10 +20,10 @@ export function SectionLabel({ children, style = {} }: { children: ReactNode; st
 
 export function HDivider({ label }: { label?: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0" }}>
-      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.05)" }} />
-      {label && <span style={{ fontSize: 9, color: "#2a2a3a", letterSpacing: "0.15em" }}>{label}</span>}
-      <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.05)" }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0" }}>
+      <div style={{ flex: 1, height: 1, background: "var(--border-medium)" }} />
+      {label && <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", letterSpacing: "0.15em", fontWeight: 700 }}>{label}</span>}
+      <div style={{ flex: 1, height: 1, background: "var(--border-medium)" }} />
     </div>
   );
 }
@@ -53,14 +53,14 @@ export function NumInput({
   onChange: (v: number) => void; accent?: string;
 }) {
   return (
-    <div style={{ border: "1px solid rgba(255,255,255,0.05)", padding: 10 }}>
-      <div style={{ fontSize: 9, color: accent || "#3a3a50", letterSpacing: "0.1em", marginBottom: 6 }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        {unit && <span style={{ fontSize: 9, color: "#2a2a3a" }}>{unit}</span>}
+    <div style={{ border: "1px solid var(--border-medium)", padding: 12 }}>
+      <div style={{ fontSize: "var(--text-xs)", color: accent || "var(--text-muted)", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {unit && <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", opacity: 0.6 }}>{unit}</span>}
         <input
           type="number" value={value} step={step}
           onChange={e => onChange(parseFloat(e.target.value) || 0)}
-          style={{ ...inputStyle, flex: 1, fontSize: 11 }}
+          style={{ ...inputStyle, flex: 1, fontSize: "var(--text-md)" }}
         />
       </div>
     </div>

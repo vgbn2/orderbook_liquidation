@@ -378,7 +378,8 @@ async function start(): Promise<void> {
                         `ict.data.${globalSymbol}.1h`,
                         `ict.data.${globalSymbol}.4h`,
                         `ict.data.${globalSymbol}.1d`,
-                        'liquidations.heatmap'
+                        'liquidations.heatmap',
+                        'quant.analytics'
                     ] as const;
 
                     for (const topic of topics) {

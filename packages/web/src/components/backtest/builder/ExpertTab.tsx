@@ -9,10 +9,10 @@ interface Props {
 
 export function ExpertTab({ shared, setShared }: Props) {
   const [activeTemplate, setActiveTemplate] = useState("sma");
-  const [code, setCode]           = useState(EXPERT_TEMPLATES.sma.code);
+  const [code, setCode] = useState(EXPERT_TEMPLATES.sma.code);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [parsed, setParsed]       = useState<any>(null);
-  const [showDocs, setShowDocs]   = useState(false);
+  const [parsed, setParsed] = useState<any>(null);
+  const [showDocs, setShowDocs] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const validate = (val: string) => {
@@ -22,10 +22,12 @@ export function ExpertTab({ shared, setShared }: Props) {
       setParsed(p);
       setShared(s => ({
         ...s, ...p,
-        stopLoss:   p.stopLossPct     ?? s.stopLoss,
-        takeProfit: p.takeProfitPct   ?? s.takeProfit,
-        balance:    p.initialBalance  ?? s.balance,
-        indicators: p.indicators      ?? s.indicators,
+        stopLoss: p.stopLossPct ?? s.stopLoss,
+        slExpr: p.stopLossExpr ?? s.slExpr,
+        takeProfit: p.takeProfitPct ?? s.takeProfit,
+        tpExpr: p.takeProfitExpr ?? s.tpExpr,
+        balance: p.initialBalance ?? s.balance,
+        indicators: p.indicators ?? s.indicators,
       }));
     } catch (e: any) {
       setParseError(e.message.split("\n")[0]);
@@ -49,16 +51,18 @@ export function ExpertTab({ shared, setShared }: Props) {
 
   const syncFromShared = () => {
     handleChange(JSON.stringify({
-      name:           shared.selectedPreset || "Custom Strategy",
+      name: shared.selectedPreset || "Custom Strategy",
       initialBalance: shared.balance,
-      buyCondition:   shared.buyCondition,
-      sellCondition:  shared.sellCondition,
-      stopLossPct:    shared.stopLoss,
-      takeProfitPct:  shared.takeProfit,
-      entryFeePct:    shared.entryFee,
-      exitFeePct:     shared.exitFee,
-      slippagePct:    shared.slippage,
-      indicators:     shared.indicators,
+      buyCondition: shared.buyCondition,
+      sellCondition: shared.sellCondition,
+      stopLossPct: shared.stopLoss,
+      stopLossExpr: shared.slExpr,
+      takeProfitPct: shared.takeProfit,
+      takeProfitExpr: shared.tpExpr,
+      entryFeePct: shared.entryFee,
+      exitFeePct: shared.exitFee,
+      slippagePct: shared.slippage,
+      indicators: shared.indicators,
     }, null, 2));
   };
 
@@ -141,9 +145,13 @@ export function ExpertTab({ shared, setShared }: Props) {
       {parsed && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
           {[
-            { label: "BUY",    val: parsed.buyCondition,  accent: "#00ffc8" },
-            { label: "SELL",   val: parsed.sellCondition, accent: "#ff3b5c" },
-            { label: "SL / TP", val: `${parsed.stopLossPct || "—"}% · ${parsed.takeProfitPct || "—"}%`, accent: "#ff9900" },
+            { label: "BUY", val: parsed.buyCondition, accent: "#00ffc8" },
+            { label: "SELL", val: parsed.sellCondition, accent: "#ff3b5c" },
+            {
+              label: "SL / TP",
+              val: `${parsed.stopLossExpr || (parsed.stopLossPct + "%")} · ${parsed.takeProfitExpr || (parsed.takeProfitPct + "%")}`,
+              accent: "#ff9900"
+            },
           ].map(item => (
             <div key={item.label} style={{ border: `1px solid ${item.accent}22`, padding: 10, background: `${item.accent}04` }}>
               <div style={{ fontSize: 9, color: item.accent, letterSpacing: "0.12em", marginBottom: 4 }}>{item.label}</div>

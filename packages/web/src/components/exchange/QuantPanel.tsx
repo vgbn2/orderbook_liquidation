@@ -23,6 +23,14 @@ function computeDirectionalBias(sigmaGrid: { sigma: number; probability: number;
     return { direction, expectedMove, bullPct, bearPct, confidence, strength };
 }
 
+function formatPrice(p: number): string {
+    if (typeof p !== 'number' || isNaN(p)) return '$0';
+    if (p < 0.01) return '$' + p.toPrecision(3);
+    if (p < 1) return '$' + p.toFixed(4);
+    if (p < 1000) return '$' + p.toFixed(2);
+    return '$' + (p / 1000).toFixed(1) + 'K';
+}
+
 // ── Bell Curve Canvas ───────────────────────────────────────────────────────
 function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -120,7 +128,7 @@ function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
         // Draw price labels for specific sigma points
         sigmaGrid.forEach((row: any) => {
             const x = toX(row.sigma);
-            const priceLabel = `$${(row.price / 1000).toFixed(1)}K`;
+            const priceLabel = formatPrice(row.price);
             ctx.fillText(priceLabel, x, H - 2);
 
             // Subtle tick
@@ -172,9 +180,23 @@ export function QuantPanel() {
 
     if (!quantSnapshot) {
         return (
-            <div className="panel-section">
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-                    AWAITING ANALYSIS...
+            <div className="panel-section" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ padding: '32px', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="loading-spinner" style={{
+                        width: '24px',
+                        height: '24px',
+                        border: '2px solid rgba(0,255,200,0.1)',
+                        borderTop: '2px solid var(--accent)',
+                        borderRadius: '50%',
+                        margin: '0 auto',
+                        animation: 'spin 1s linear infinite'
+                    }} />
+                    <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 700, letterSpacing: '2px' }}>
+                        INITIALIZING MACRO ENGINE...
+                    </span>
+                    <style>{`
+                        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                    `}</style>
                 </div>
             </div>
         );
@@ -369,7 +391,7 @@ export function QuantPanel() {
                                     }} />
                                 </div>
                                 <span style={{ width: '56px', textAlign: 'right', fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>
-                                    ${(row.price / 1000).toFixed(1)}K
+                                    {formatPrice(row.price)}
                                 </span>
                             </div>
                         ))}

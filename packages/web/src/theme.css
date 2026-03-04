@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 /* ═══════════════════════════════════════════════════
    DESIGN TOKENS — single source of truth
@@ -18,7 +18,7 @@
     /* ── Accent & Highlights ── */
     --accent: #00ffc8;
     /* Primary brand color (Cyan) */
-    --accent-dim: rgba(0, 255, 200, 0.10);
+    --accent-dim: rgba(234, 245, 243, 0.1);
     /* Faded background version */
     --accent-border: rgba(0, 255, 200, 0.28);
     /* Border version */
@@ -34,30 +34,30 @@
     /* Disabled / Placeholder state (Grey) */
 
     /* ── Text Colors ── */
-    --text-primary: #f5f3ed;
+    --text-primary: #ffffff;
     /* Headers and high-emphasis text */
-    --text-secondary: #e1e5e9;
+    --text-secondary: #f1f5f9;
     /* Main labels and secondary info */
-    --text-muted: #e7eaf0;
+    --text-muted: #cbd5e1;
     /* De-emphasized helper text */
     --text-accent: #00ffc8;
     /* Text that uses the brand color */
 
     /* ── Borders & Dividers ── */
-    --border-strong: rgba(255, 255, 255, 0.11);
+    --border-strong: rgba(241, 234, 234, 0.966);
     --border-medium: rgba(255, 255, 255, 0.07);
     --border-subtle: rgba(255, 255, 255, 0.03);
 
     /* ── Typography ── */
-    --font: 'JetBrains Mono', 'Courier New', monospace;
+    --font: 'Inter', 'JetBrains Mono', system-ui, sans-serif;
 
     /* ── Font Sizes ── */
-    --text-xs: 9px;
-    --text-sm: 10px;
-    --text-md: 12px;
-    --text-lg: 14px;
-    --text-xl: 18px;
-    --text-xxl: 24px;
+    --text-xs: 11px;
+    --text-sm: 13px;
+    --text-md: 15px;
+    --text-lg: 18px;
+    --text-xl: 22px;
+    --text-xxl: 28px;
 
     /* ── Sizing & Spacing ── */
     --h-topnav: 44px;

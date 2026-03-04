@@ -6,7 +6,9 @@ export interface BacktestConfig {
     buyCondition: string; // e.g., "close > sma20"
     sellCondition: string; // e.g., "close < sma20"
     stopLossPct?: number; // e.g., 2.0 = 2%
+    stopLossExpr?: string; // e.g., "low[i-1]"
     takeProfitPct?: number; // e.g., 5.0 = 5%
+    takeProfitExpr?: string; // e.g., "high[i-1] * 1.02"
     initialBalance?: number;
     indicators: {
         name: string;
@@ -251,6 +253,9 @@ function runSingleBacktest(candles: CandleData[], config: BacktestConfig, initia
 
     const buyFn = compileCondition(config.buyCondition);
     const sellFn = compileCondition(config.sellCondition);
+    const slExprFn = config.stopLossExpr ? compileCondition(config.stopLossExpr) : null;
+    const tpExprFn = config.takeProfitExpr ? compileCondition(config.takeProfitExpr) : null;
+
     const bahQty = initialBalance / candles[0].close;
     const bahCurve = candles.map(c => ({ time: c.time, value: bahQty * c.close }));
     const warmupPeriod = Math.max(...(config.indicators || []).map(i => i.period), 1);
@@ -274,8 +279,10 @@ function runSingleBacktest(candles: CandleData[], config: BacktestConfig, initia
             }
 
             let exitReason: 'TP' | 'SL' | 'CONDITION' | null = null;
-            if (config.takeProfitPct && price >= position.tpPrice) exitReason = 'TP';
-            else if (config.stopLossPct && price <= position.stopPrice) exitReason = 'SL';
+            if (config.takeProfitExpr && tpExprFn && price >= position.tpPrice) exitReason = 'TP';
+            else if (config.takeProfitPct && !config.takeProfitExpr && price >= position.tpPrice) exitReason = 'TP';
+            else if (config.stopLossExpr && slExprFn && price <= position.stopPrice) exitReason = 'SL';
+            else if (config.stopLossPct && !config.stopLossExpr && price <= position.stopPrice) exitReason = 'SL';
             else if (sellFn(env, i)) exitReason = 'CONDITION';
 
             if (exitReason) {
@@ -311,10 +318,21 @@ function runSingleBacktest(candles: CandleData[], config: BacktestConfig, initia
                 ep += sip;
             }
             const qty = balance / ep;
+
+            // Calculate SL/TP prices at entry
+            let stopPrice = ep * (1 - (config.stopLossPct || 0) / 100);
+            if (config.stopLossExpr && slExprFn) {
+                stopPrice = slExprFn(env, i);
+            }
+
+            let tpPrice = ep * (1 + (config.takeProfitPct || 0) / 100);
+            if (config.takeProfitExpr && tpExprFn) {
+                tpPrice = tpExprFn(env, i);
+            }
+
             position = {
                 entryPrice: ep, entryTime: c.time, qty,
-                stopPrice: ep * (1 - (config.stopLossPct || 0) / 100),
-                tpPrice: ep * (1 + (config.takeProfitPct || 0) / 100)
+                stopPrice, tpPrice
             };
             currentTradeHoldingFees = 0;
             if (config.entryFeePct) {

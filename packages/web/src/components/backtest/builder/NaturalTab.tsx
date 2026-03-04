@@ -14,10 +14,10 @@ interface Props {
   setShared: React.Dispatch<React.SetStateAction<SharedState>>;
 }
 
-export function NaturalTab({ shared, setShared }: Props) {
-  const [nlInput, setNlInput]     = useState("");
+export function NaturalTab({ setShared }: Props) {
+  const [nlInput, setNlInput] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [result, setResult]       = useState<ParseResult | null>(null);
+  const [result, setResult] = useState<ParseResult | null>(null);
 
   const parse = () => {
     setProcessing(true);
@@ -32,7 +32,7 @@ export function NaturalTab({ shared, setShared }: Props) {
     if (!result) return;
     setShared(s => ({
       ...s,
-      buyCondition:  result.buyCondition,
+      buyCondition: result.buyCondition,
       sellCondition: result.sellCondition,
       indicators: [{ name: "sma20", type: "SMA", period: 20 }, { name: "sma50", type: "SMA", period: 50 }],
     }));

@@ -130,7 +130,7 @@ export function useWebSocket() {
                         'confluence',
                         'trades',
                         'alerts',
-                        'quant.analytics',
+                        `quant.analytics.${symbol.toUpperCase()}`,
                         'ict.data',
                         'ict.sweep_confirmed',
                         `candles.binance.${symbol.toUpperCase()}.4h`,
@@ -301,7 +301,8 @@ export function useWebSocket() {
                             }));
                         }
                         break;
-                    case 'quant.analytics':
+                    case `quant.analytics.${symbol.toUpperCase()}`:
+                    case 'quant.analytics': // Fallback just in case
                         pendingQuant.current = msg.data;
                         break;
                     case 'ict.data':
@@ -376,14 +377,19 @@ export function useWebSocket() {
                     action: 'unsubscribe',
                     topics: [
                         activeCandleTopic.current,
-                        `candles.aggregated.${oldSym}.${oldTF}`
+                        `candles.aggregated.${oldSym}.${oldTF}`,
+                        `quant.analytics.${oldSym}`
                     ]
                 }));
             }
 
             wsRef.current.send(JSON.stringify({
                 action: 'subscribe',
-                topics: [newTopic, newAggTopic]
+                topics: [
+                    newTopic,
+                    newAggTopic,
+                    `quant.analytics.${symbol.toUpperCase()}`
+                ]
             }));
 
             activeCandleTopic.current = newTopic;
