@@ -5,10 +5,14 @@
 // Importing any overlay registers it with the overlayRegistry automatically.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import './liquidityOverlay';
-import './ictOverlay';
-import './sessionOverlay';
-import './volumeProfileOverlay';
+import './ictFvgOverlay';
+import './ictObOverlay';
+import './ictSweepsOverlay';
+import './liqHeatmapOverlay';
+import './restingLiqOverlay';
+import './liqClustersOverlay';
+import './sessionBoxesOverlay';
+import './volProfileOverlay';
 
 // Re-export registry for convenience
 export * from './overlayRegistry';

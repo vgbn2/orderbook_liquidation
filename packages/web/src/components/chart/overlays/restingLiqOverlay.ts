@@ -1,13 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// components/chart/overlays/liquidityOverlay.ts
-//
-// 3-zone resting liquidity overlay + Liquidation Clusters.
-// Zone 3: Liquidation heatmap
-// Zone 2: Deep orderbook walls (dashed)
-// Zone 1: Live book walls (animated)
-// Zone 0: Liquidation Clusters
-// ─────────────────────────────────────────────────────────────────────────────
-
 import { registerOverlay } from './overlayRegistry';
 
 registerOverlay({
@@ -15,29 +5,12 @@ registerOverlay({
     timeframes: ['5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'],
     zIndex: 10,
     fn: ({ ctx, cw, toY, getState, candles, indicators }) => {
-        const { orderbook, deepOrderbook, liquidations, liqClusters } = getState();
+        const { orderbook, deepOrderbook } = getState();
         const currentPrice = candles[candles.length - 1]?.close || 0;
-        if (!Array.isArray(indicators)) return;
-
-        // Zone 3: Liquidation heatmap
-        if (indicators.includes('liq_overlay') && liquidations?.heatmap?.length) {
-            const maxTotal = Math.max(...liquidations.heatmap.map((h: any) => h.total), 1);
-            for (const node of liquidations.heatmap) {
-                if (!node || node.total < maxTotal * 0.1) continue;
-                const y = toY(node.price);
-                if (y == null) continue;
-
-                const intensity = node.total / maxTotal;
-                ctx.strokeStyle = node.long_liq_usd > node.short_liq_usd
-                    ? `rgba(255, 45, 78, ${0.1 + intensity * 0.2})`
-                    : `rgba(0, 230, 118, ${0.1 + intensity * 0.2})`;
-                ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke();
-            }
-        }
+        if (!Array.isArray(indicators) || !indicators.includes('resting_liq')) return;
 
         // Zone 2: Deep orderbook walls (dashed)
-        if (indicators.includes('resting_liq') && deepOrderbook) {
+        if (deepOrderbook) {
             const renderDeep = (levels: { price: number; qty: number }[], isBid: boolean) => {
                 if (!levels?.length) return;
                 const top30 = [...levels].sort((a, b) => b.qty - a.qty).slice(0, 30);
@@ -62,7 +35,7 @@ registerOverlay({
         }
 
         // Zone 1: Live book walls (animated)
-        if (indicators.includes('resting_liq') && orderbook?.walls) {
+        if (orderbook?.walls) {
             const allWalls = [
                 ...(orderbook.walls.bid_walls ?? []).map((w: any) => ({ ...w, side: 'bid' as const })),
                 ...(orderbook.walls.ask_walls ?? []).map((w: any) => ({ ...w, side: 'ask' as const })),
@@ -90,23 +63,6 @@ registerOverlay({
             }
         }
 
-        // Zone 0: Liquidation Clusters
-        if (indicators.includes('liq_clusters') && liqClusters?.length) {
-            for (const cluster of liqClusters) {
-                const y = toY(cluster.price);
-                if (y == null) continue;
-
-                const thickness = Math.max(2, Math.min(20, cluster.intensity * 20));
-                ctx.strokeStyle = cluster.side === 'long'
-                    ? `rgba(255, 45, 78, ${0.2 + cluster.ageFactor * 0.6})`
-                    : `rgba(0, 230, 118, ${0.2 + cluster.ageFactor * 0.6})`;
-                ctx.lineWidth = thickness;
-                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke();
-
-                ctx.font = '9px JetBrains Mono, monospace';
-                ctx.fillStyle = ctx.strokeStyle;
-                ctx.fillText(`$${(cluster.totalSize / 1e6).toFixed(1)}M`, cw - 50, y - Math.max(4, thickness / 2 + 2));
-            }
-        }
+        ctx.globalAlpha = 1.0;
     }
 });

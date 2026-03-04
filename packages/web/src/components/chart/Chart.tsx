@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { createChart, ColorType, CrosshairMode } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 
@@ -14,6 +14,8 @@ import './overlays'; // Auto-registers plugins
 // Components
 import { ErrorBoundary } from '../shared/ErrorBoundary.tsx';
 import { PerfStats } from '../shared/PerfStats.tsx';
+
+import { createIndicators, updateIndicators } from './indicators';
 
 export type { DrawingTool, Drawing };
 
@@ -42,14 +44,10 @@ export function Chart(props: ChartProps) {
     );
 }
 
-interface SeriesBundle {
-    candle: ISeriesApi<'Candlestick'>;
-    line: ISeriesApi<'Line'>;
-    volume: ISeriesApi<'Histogram'>;
-}
+const DEFAULT_INDICATORS = new Set<IndicatorKey>(['volume']);
 
 function ChartInner({
-    activeIndicators = new Set<IndicatorKey>(['volume']),
+    activeIndicators = DEFAULT_INDICATORS,
     drawings: propsDrawings,
     setDrawings: propsSetDrawings,
     onSelectDrawing: propsOnSelectDrawing,
@@ -58,12 +56,10 @@ function ChartInner({
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    /**
-     * FIX 1 — BLACK SCREEN
-     * chart + series are stored as STATE, not refs.
-     */
     const [chart, setChart] = useState<IChartApi | null>(null);
-    const [series, setSeries] = useState<SeriesBundle | null>(null);
+    const [candleSeries, setCandleSeries] = useState<ISeriesApi<'Candlestick'> | null>(null);
+    const [lineSeries, setLineSeries] = useState<ISeriesApi<'Line'> | null>(null);
+    const [indicatorInstances, setIndicatorInstances] = useState<Record<string, any>>({});
 
     // Internal Drawing Hook (fallback if App doesn't provide)
     const {
@@ -82,11 +78,6 @@ function ChartInner({
     const timeframe = useCandleStore((s) => s.timeframe);
     const { orderbook, liquidations, liqClusters } = useMarketDataStore();
 
-    /**
-     * FIX 2 — HIGH STRAIN (76%)
-     * Now uses a dirty flag: only draw when something changed.
-     * Result: idle CPU drops from ~76% to <5%.
-     */
     const dirtyRef = useRef(true);
 
     // Mark dirty whenever data changes
@@ -113,17 +104,21 @@ function ChartInner({
             timeScale: { borderColor: '#1c1c2e', timeVisible: true, secondsVisible: false, rightOffset: 12 },
         });
 
-        const candleSeries = instance.addCandlestickSeries({
+        // Core Series
+        const cs = instance.addCandlestickSeries({
             upColor: '#00e87a', downColor: '#ff2d4e',
             borderUpColor: '#00e87a', borderDownColor: '#ff2d4e',
             wickUpColor: '#00b85e', wickDownColor: '#cc1c39',
         });
-        const lineSeries = instance.addLineSeries({ color: '#2962FF', lineWidth: 2, visible: false });
-        const volumeSeries = instance.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'volume' });
-        instance.priceScale('volume').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+        const ls = instance.addLineSeries({ color: '#2962FF', lineWidth: 2, visible: false });
+
+        // Modular Indicators
+        const instances = createIndicators(instance);
 
         setChart(instance);
-        setSeries({ candle: candleSeries, line: lineSeries, volume: volumeSeries });
+        setCandleSeries(cs);
+        setLineSeries(ls);
+        setIndicatorInstances(instances);
         dirtyRef.current = true;
 
         const handleResize = () => {
@@ -147,43 +142,48 @@ function ChartInner({
             window.removeEventListener('resize', handleResize);
             instance.remove();
             setChart(null);
-            setSeries(null);
+            setCandleSeries(null);
+            setLineSeries(null);
+            setIndicatorInstances({});
         };
     }, []);
 
-    // ── 2. Data Synchronization ──────────────────────────────────────────────
-    useEffect(() => {
-        if (!series) return;
-
-        const filtered = candles.filter(
-            c => c != null && typeof c.time === 'number' && isFinite(c.time) && c.time > 0
-        );
-        if (filtered.length === 0) return;
-
-        const unique = Array.from(new Map(filtered.map(c => [c.time, c])).values())
+    // Deduplicate and sort candles
+    const unique = useMemo(() => {
+        const filtered = candles.filter(c => c != null && typeof c.time === 'number' && isFinite(c.time) && c.time > 0);
+        if (filtered.length === 0) return [];
+        return Array.from(new Map(filtered.map(c => [c.time, c])).values())
             .sort((a, b) => a.time - b.time)
             .filter((c, i, arr) => i === 0 || c.time !== arr[i - 1].time);
+    }, [candles]);
 
-        series.candle.setData(unique.map(c => ({
-            time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close
-        })));
+    // ── 2. Data Synchronization ──────────────────────────────────────────────
+    useEffect(() => {
+        if (!chart || !candleSeries || !lineSeries) return;
+        if (unique.length === 0) return;
 
-        if (activeIndicators.has('volume')) {
-            series.volume.setData(unique.map(c => ({
-                time: c.time as Time, value: c.volume,
-                color: c.close >= c.open ? 'rgba(0,232,122,0.25)' : 'rgba(255,45,78,0.2)',
+        // Core Candle/Line Data
+        const lineOn = activeIndicators.has('line_chart');
+        candleSeries.applyOptions({ visible: !lineOn });
+        lineSeries.applyOptions({ visible: lineOn });
+
+        if (lineOn) {
+            lineSeries.setData(unique.map(c => ({ time: c.time as Time, value: c.close })));
+        } else {
+            candleSeries.setData(unique.map(c => ({
+                time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close
             })));
         }
-        if (activeIndicators.has('line_chart')) {
-            series.line.setData(unique.map(c => ({ time: c.time as Time, value: c.close })));
-        }
+
+        // Modular Indicators Data
+        updateIndicators(indicatorInstances, unique, activeIndicators as Set<string>);
 
         dirtyRef.current = true;
-    }, [candles, series, activeIndicators]);
+    }, [unique, chart, candleSeries, lineSeries, indicatorInstances, activeIndicators]);
 
     // ── 3. Overlay Rendering (Canvas) ─────────────────────────────────────────
     useEffect(() => {
-        if (!chart || !series) return;
+        if (!chart || !candleSeries) return;
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -204,7 +204,7 @@ function ChartInner({
 
                 runOverlays({
                     ctx, cw, ch, chart,
-                    candleSeries: series.candle,
+                    candleSeries,
                     candles, timeframe,
                     indicators: Array.from(activeIndicators),
                     toX: (time) => {
@@ -213,7 +213,7 @@ function ChartInner({
                     },
                     toY: (price) => {
                         if (price == null || isNaN(price)) return null;
-                        return series.candle.priceToCoordinate(price);
+                        return candleSeries.priceToCoordinate(price);
                     },
                     getState: () => ({
                         orderbook,
@@ -229,10 +229,7 @@ function ChartInner({
 
         render();
 
-        // Dirty on pan/zoom so overlays stay positioned
-        const handleVisibleRangeChange = () => {
-            dirtyRef.current = true;
-        };
+        const handleVisibleRangeChange = () => { dirtyRef.current = true; };
         chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
 
         return () => {
@@ -240,7 +237,7 @@ function ChartInner({
             cancelAnimationFrame(rafId);
             chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
         };
-    }, [chart, series, candles, timeframe, orderbook, liquidations, liqClusters, activeIndicators]);
+    }, [chart, candleSeries, activeIndicators, candles, orderbook, liquidations, liqClusters]);
 
     useEffect(() => {
         void { drawings, setDrawings, selectedDrawingId, setSelectedDrawingId };

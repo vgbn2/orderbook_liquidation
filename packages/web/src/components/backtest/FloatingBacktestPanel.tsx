@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDraggable } from '../../hooks/useDraggable';
 import { useCandleStore } from '../../stores/candleStore';
 import { runBacktest, BacktestResult } from '../../lib/backtester';
@@ -33,6 +33,30 @@ export function FloatingBacktestPanel({ onClose }: Props) {
     const [result, setResult] = useState<BacktestResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [backtestDays, setBacktestDays] = useState<number | 'all' | null>(null);
+    const [panelHeight, setPanelHeight] = useState(400);
+    const [isResizing, setIsResizing] = useState(false);
+
+    const handleResizeMouseDown = (e: React.MouseEvent) => {
+        setIsResizing(true);
+        e.preventDefault();
+    };
+
+    useEffect(() => {
+        if (!isResizing) return;
+        const handleMouseMove = (e: MouseEvent) => {
+            const next = window.innerHeight - e.clientY;
+            if (next > 100 && next < window.innerHeight - 100) {
+                setPanelHeight(next);
+            }
+        };
+        const handleMouseUp = () => setIsResizing(false);
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
 
     const candles = useCandleStore(s => s.candles);
     const timeframe = useCandleStore(s => s.timeframe);
@@ -166,6 +190,7 @@ export function FloatingBacktestPanel({ onClose }: Props) {
                 return {
                     ...baseStyles,
                     width: '800px',
+                    height: `${panelHeight}px`,
                     borderRadius: '8px',
                 };
         }
@@ -173,6 +198,20 @@ export function FloatingBacktestPanel({ onClose }: Props) {
 
     return (
         <div ref={elementRef as any} style={getContainerStyles()}>
+            {/* ── RESIZE HANDLE (TOP) ── */}
+            <div
+                onMouseDown={handleResizeMouseDown}
+                style={{
+                    height: '4px',
+                    width: '100%',
+                    cursor: 'row-resize',
+                    background: isResizing ? 'var(--accent)' : 'transparent',
+                    zIndex: 1000,
+                    transition: 'background 0.2s',
+                    position: 'absolute',
+                    top: 0
+                }}
+            />
             {/* ── DRAG HANDLE & HDR ── */}
             <div
                 onMouseDown={mode === 'FLOATING' ? handleMouseDown : undefined}

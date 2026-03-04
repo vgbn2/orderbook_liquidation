@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { BacktestPanel } from './BacktestPanel.tsx';
 import { BacktestResult } from '../../lib/backtester';
 import { EquityChart } from './EquityChart.tsx';
@@ -8,6 +8,35 @@ import { StatCard } from '../shared/UI.tsx';
 
 export function BacktestPage() {
     const [result, setResult] = useState<BacktestResult | null>(null);
+    const [leftWidth, setLeftWidth] = useState(600);
+    const [isResizing, setIsResizing] = useState(false);
+
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        setIsResizing(true);
+        e.preventDefault();
+    }, []);
+
+    useEffect(() => {
+        if (!isResizing) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const next = e.clientX;
+            if (next > 400 && next < 800) {
+                setLeftWidth(next);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
 
     return (
         <div style={{
@@ -16,22 +45,50 @@ export function BacktestPage() {
             height: '100%',
             overflow: 'hidden',
             background: 'var(--bg-base)',
+            cursor: isResizing ? 'col-resize' : 'default',
+            userSelect: isResizing ? 'none' : 'auto'
         }}>
-            {/* LEFT — strategy config (existing BacktestPanel component) */}
+            {/* LEFT — strategy config */}
             <div style={{
-                width: '50%',
-                maxWidth: 800,
-                minWidth: 400,
-                borderRight: '1px solid var(--border-medium)',
+                width: leftWidth,
                 flexShrink: 0,
+                borderRight: '1px solid var(--border-medium)',
                 overflowY: 'auto',
-                background: 'var(--bg-surface)'
+                background: 'var(--bg-surface)',
+                transition: isResizing ? 'none' : 'width 0.2s ease'
             }}>
                 <BacktestPanel onResult={(r) => setResult(r)} />
             </div>
 
+            {/* RESIZER DIVIDER */}
+            <div
+                onMouseDown={handleMouseDown}
+                style={{
+                    width: '6px',
+                    marginLeft: '-3px',
+                    marginRight: '-3px',
+                    cursor: 'col-resize',
+                    zIndex: 100,
+                    background: isResizing ? 'var(--accent)' : 'transparent',
+                    transition: 'background 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }}
+                onMouseEnter={(e) => { if (!isResizing) e.currentTarget.style.background = 'rgba(0, 255, 200, 0.15)'; }}
+                onMouseLeave={(e) => { if (!isResizing) e.currentTarget.style.background = 'transparent'; }}
+            >
+                <div style={{
+                    width: '2px',
+                    height: '30px',
+                    background: isResizing ? '#fff' : 'var(--border-strong)',
+                    borderRadius: '1px',
+                    opacity: 0.5
+                }} />
+            </div>
+
             {/* RIGHT — results */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 24, minWidth: 0 }}>
                 <RightPanel result={result} />
             </div>
         </div>

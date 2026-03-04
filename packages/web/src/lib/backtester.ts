@@ -1,4 +1,4 @@
-import { CandleData } from '../stores/marketStore';
+import { CandleData } from '../types';
 import { computeVRVP } from './vrvp';
 
 export interface BacktestConfig {
@@ -77,55 +77,7 @@ export interface BacktestResult {
     };
 }
 
-function calculateSMA(data: number[], period: number) {
-    const res: number[] = new Array(data.length).fill(0);
-    let sum = 0;
-    for (let i = 0; i < data.length; i++) {
-        sum += data[i];
-        if (i >= period) {
-            sum -= data[i - period];
-            res[i] = sum / period;
-        } else {
-            res[i] = sum / (i + 1);
-        }
-    }
-    return res;
-}
-
-function calculateEMA(data: number[], period: number) {
-    const res: number[] = new Array(data.length).fill(0);
-    if (!data.length) return res;
-    const k = 2 / (period + 1);
-    let ema = data[0];
-    res[0] = ema;
-    for (let i = 1; i < data.length; i++) {
-        ema = (data[i] * k) + (ema * (1 - k));
-        res[i] = ema;
-    }
-    return res;
-}
-
-function calculateRSI(data: number[], period: number) {
-    const res: number[] = new Array(data.length).fill(50);
-    if (data.length <= period) return res;
-    let gains = 0, losses = 0;
-    for (let i = 1; i <= period; i++) {
-        const diff = data[i] - data[i - 1];
-        if (diff >= 0) gains += diff;
-        else losses -= diff;
-    }
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
-    for (let i = period + 1; i < data.length; i++) {
-        const diff = data[i] - data[i - 1];
-        const gain = diff >= 0 ? diff : 0;
-        const loss = diff < 0 ? -diff : 0;
-        avgGain = ((avgGain * (period - 1)) + gain) / period;
-        avgLoss = ((avgLoss * (period - 1)) + loss) / period;
-        res[i] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
-    }
-    return res;
-}
+import { calculateSMA, calculateEMA, calculateRSI } from './indicators';
 
 function calculateICT(candles: CandleData[], lookback: number) {
     const fvgBull = new Array(candles.length).fill(0);

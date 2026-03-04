@@ -1,30 +1,30 @@
+import { useEffect, useRef, useState, lazy, Suspense, useCallback } from 'react';
 import { useCandleStore } from './stores/candleStore';
 import { useMarketDataStore } from './stores/marketDataStore';
 import { Chart, IndicatorKey, DrawingTool } from './components/chart/Chart.tsx';
 import { TerminusNav } from './components/shared/TerminusNav.tsx';
-import { FloatingBacktestPanel } from './components/backtest/FloatingBacktestPanel.tsx';
-
+import { ErrorBoundary } from './components/shared/ErrorBoundary.tsx';
 import { OptionsPanel } from './components/exchange/OptionsPanel.tsx';
 import { LiquidationPanel } from './components/exchange/LiquidationPanel.tsx';
 import { VWAFPanel } from './components/exchange/VWAFPanel.tsx';
 import { ConfluencePanel } from './components/exchange/ConfluencePanel.tsx';
-import { ReplayPanel } from './components/exchange/ReplayPanel.tsx';
 import { useLayoutResizer } from './hooks/useLayoutResizer';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAppEvents } from './hooks/useAppEvents';
 import { QuantPanel } from './components/exchange/QuantPanel.tsx';
-import { AlertManager } from './components/shared/AlertManager.tsx';
 import { Toolbar } from './components/chart/Toolbar.tsx';
 import { ToastContainer, NotifMutedBadge } from './components/shared/Toast.tsx';
 import { Orderbook } from './components/exchange/Orderbook.tsx';
-import { BacktestPage } from './components/backtest/BacktestPage.tsx';
-import { ExchangePage } from './components/exchange/ExchangePage.tsx';
 import { HTFBiasMonitor } from './components/chart/HTFBiasMonitor.tsx';
-import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSettingsStore } from './stores/settingsStore';
 import { useWebSocket } from './hooks/useWebSocket';
-import { ErrorBoundary } from './components/shared/ErrorBoundary.tsx';
 import { useDrawings } from './components/chart/hooks/useDrawings.ts';
+import { FloatingReplayPanel } from './components/exchange/FloatingReplayPanel.tsx';
+
+const FloatingBacktestPanel = lazy(() => import('./components/backtest/FloatingBacktestPanel.tsx').then(m => ({ default: m.FloatingBacktestPanel })));
+const AlertManager = lazy(() => import('./components/shared/AlertManager.tsx').then(m => ({ default: m.AlertManager })));
+const BacktestPage = lazy(() => import('./components/backtest/BacktestPage.tsx').then(m => ({ default: m.BacktestPage })));
+const ExchangePage = lazy(() => import('./components/exchange/ExchangePage.tsx').then(m => ({ default: m.ExchangePage })));
 
 export function App() {
     const connected = useMarketDataStore(s => s.connected);
@@ -41,11 +41,21 @@ export function App() {
     const timezone = 7; // UTC+7 default
     const [sidebarTab, setSidebarTab] = useState<'macro' | 'options'>('macro');
     const [showBacktestPanel, setShowBacktestPanel] = useState(false);
+    const [showReplayPanel, setShowReplayPanel] = useState(false);
     const [showAlertPanel, setShowAlertPanel] = useState(false);
 
+    const uiComplexity = useSettingsStore(s => s.uiComplexity);
     const showOrderbook = useSettingsStore(s => s.showOrderbook);
     const currentView = useSettingsStore(s => s.currentView);
     const setView = useSettingsStore(s => s.setView);
+
+    // Replay panel listener
+    useEffect(() => {
+        const handler = () => setShowReplayPanel(true);
+        window.addEventListener('TERMINUS_SHOW_REPLAY', handler);
+        return () => window.removeEventListener('TERMINUS_SHOW_REPLAY', handler);
+    }, []);
+
     const exchangeView = useSettingsStore(s => s.exchangeView);
     const setExchangeView = useSettingsStore(s => s.setExchangeView);
     const rightPanelWidth = useSettingsStore(s => s.rightPanelWidth);
@@ -155,7 +165,7 @@ export function App() {
             )}
 
             {/* ── MAIN VIEW SWITCHER ───────────────────────────────── */}
-            <div id="main" style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+            <main id="main" style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
 
                 {/* ── CHART VIEW ─────────────────────────────────── */}
                 <div style={{
@@ -187,25 +197,38 @@ export function App() {
                         </div>
                     </div>
 
-                    {/* ── RESIZER ── */}
+                    {/* ── VERTICAL RESIZER (Sidebar Width) ── */}
                     <div
                         onMouseDown={handleMouseDown}
                         style={{
-                            width: '4px',
+                            width: '6px',
                             cursor: 'col-resize',
                             background: isResizing ? 'var(--accent)' : 'transparent',
-                            zIndex: 100,
+                            zIndex: 1000,
                             height: '100%',
                             transition: 'background 0.2s',
                             borderLeft: '1px solid var(--border-medium)',
-                            marginLeft: '-2px'
+                            marginLeft: '-3px',
+                            position: 'relative',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
                         }}
-                        onMouseEnter={(e) => { if (!isResizing) e.currentTarget.style.background = 'rgba(0, 255, 200, 0.2)'; }}
+                        onMouseEnter={(e) => { if (!isResizing) e.currentTarget.style.background = 'rgba(0, 255, 200, 0.15)'; }}
                         onMouseLeave={(e) => { if (!isResizing) e.currentTarget.style.background = 'transparent'; }}
-                    />
+                    >
+                        {/* Grab Handle */}
+                        <div style={{
+                            width: '2px',
+                            height: '30px',
+                            background: isResizing ? '#fff' : 'var(--border-strong)',
+                            borderRadius: '1px',
+                            opacity: 0.5
+                        }} />
+                    </div>
 
                     {/* ── RIGHT PANEL ────────────────────────────────── */}
-                    <aside id="right-panel" style={{
+                    <aside id="right-panel" aria-label="Market data sidebar" style={{
                         width: rightPanelWidth,
                         background: 'var(--bg-surface)',
                         borderLeft: '1px solid var(--border-strong)',
@@ -229,67 +252,76 @@ export function App() {
                             </ErrorBoundary>
                         </div>
 
-                        {/* ── VERTICAL RESIZER ── */}
-                        {showOrderbook && (
+                        {/* ── HORIZONTAL RESIZER (Orderbook Height) ── */}
+                        {showOrderbook && uiComplexity === 'Advanced' && (
                             <div
                                 onMouseDown={handleVMouseDown}
                                 style={{
-                                    height: '4px',
+                                    height: '6px',
                                     cursor: 'row-resize',
                                     background: isVResizing ? 'var(--accent)' : 'transparent',
-                                    zIndex: 100,
+                                    zIndex: 1000,
                                     width: '100%',
                                     transition: 'background 0.2s',
                                     borderBottom: '1px solid var(--border-medium)',
-                                    marginTop: '-2px'
+                                    marginTop: '-3px',
+                                    position: 'relative',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
                                 }}
-                                onMouseEnter={(e) => { if (!isVResizing) e.currentTarget.style.background = 'rgba(0, 255, 200, 0.2)'; }}
+                                onMouseEnter={(e) => { if (!isVResizing) e.currentTarget.style.background = 'rgba(0, 255, 200, 0.15)'; }}
                                 onMouseLeave={(e) => { if (!isVResizing) e.currentTarget.style.background = 'transparent'; }}
-                            />
+                            >
+                                {/* Grab Handle */}
+                                <div style={{
+                                    width: '30px',
+                                    height: '2px',
+                                    background: isVResizing ? '#fff' : 'var(--border-strong)',
+                                    borderRadius: '1px',
+                                    opacity: 0.5
+                                }} />
+                            </div>
                         )}
 
-                        {/* Market Replay Controls */}
-                        <ErrorBoundary name="ReplayPanel">
-                            <ReplayPanel />
-                        </ErrorBoundary>
-
-                        {/* Tabs area */}
-                        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
-                            <div
-                                onClick={() => setSidebarTab('macro')}
-                                style={{ flex: 1, padding: '12px', textAlign: 'center', fontSize: '11px', fontWeight: sidebarTab === 'macro' ? 700 : 500, color: sidebarTab === 'macro' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: sidebarTab === 'macro' ? '2px solid var(--accent)' : 'none', cursor: 'pointer' }}
-                            >
-                                MACRO · QUANT
-                            </div>
-                            <div
-                                onClick={() => setSidebarTab('options')}
-                                style={{ flex: 1, padding: '12px', textAlign: 'center', fontSize: '11px', fontWeight: sidebarTab === 'options' ? 700 : 500, color: sidebarTab === 'options' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: sidebarTab === 'options' ? '2px solid var(--accent)' : 'none', cursor: 'pointer' }}
-                            >
-                                OPTIONS · GEX
-                            </div>
-                            {/* Adding a small backtest icon tab just so it's accessible */}
-                            <div
-                                onClick={() => setShowBacktestPanel(true)}
-                                title="Open Backtest Panel"
-                                style={{ padding: '12px 16px', borderLeft: '1px solid var(--border-medium)', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
-                                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
-                            >
-                                ▶
-                            </div>
-                        </div>
-
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                            {sidebarTab === 'macro' ? (
+                            {uiComplexity === 'Advanced' ? (
                                 <>
-                                    <ErrorBoundary name="HTFBiasMonitor"><HTFBiasMonitor /></ErrorBoundary>
-                                    <ErrorBoundary name="QuantPanel"><QuantPanel /></ErrorBoundary>
-                                    <ErrorBoundary name="LiquidationPanel"><LiquidationPanel /></ErrorBoundary>
-                                    <ErrorBoundary name="VWAFPanel"><VWAFPanel /></ErrorBoundary>
-                                    <ErrorBoundary name="ConfluencePanel"><ConfluencePanel /></ErrorBoundary>
+                                    <div style={{ display: 'flex', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
+                                        <div
+                                            onClick={() => setSidebarTab('macro')}
+                                            style={{ flex: 1, padding: '12px', textAlign: 'center', fontSize: '11px', fontWeight: sidebarTab === 'macro' ? 700 : 500, color: sidebarTab === 'macro' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: sidebarTab === 'macro' ? '2px solid var(--accent)' : 'none', cursor: 'pointer' }}
+                                        >
+                                            MACRO · QUANT
+                                        </div>
+                                        <div
+                                            onClick={() => setSidebarTab('options')}
+                                            style={{ flex: 1, padding: '12px', textAlign: 'center', fontSize: '11px', fontWeight: sidebarTab === 'options' ? 700 : 500, color: sidebarTab === 'options' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: sidebarTab === 'options' ? '2px solid var(--accent)' : 'none', cursor: 'pointer' }}
+                                        >
+                                            OPTIONS · GEX
+                                        </div>
+                                    </div>
+
+                                    {sidebarTab === 'macro' ? (
+                                        <>
+                                            <ErrorBoundary name="HTFBiasMonitor"><HTFBiasMonitor /></ErrorBoundary>
+                                            <ErrorBoundary name="QuantPanel"><QuantPanel /></ErrorBoundary>
+                                            <ErrorBoundary name="LiquidationPanel"><LiquidationPanel /></ErrorBoundary>
+                                            <ErrorBoundary name="VWAFPanel"><VWAFPanel /></ErrorBoundary>
+                                            <ErrorBoundary name="ConfluencePanel"><ConfluencePanel /></ErrorBoundary>
+                                        </>
+                                    ) : (
+                                        <ErrorBoundary name="OptionsPanel"><OptionsPanel /></ErrorBoundary>
+                                    )}
                                 </>
                             ) : (
-                                <ErrorBoundary name="OptionsPanel"><OptionsPanel /></ErrorBoundary>
+                                <>
+                                    {/* Simple Mode: Only core panels */}
+                                    <ErrorBoundary name="QuantPanel"><QuantPanel /></ErrorBoundary>
+                                    <div style={{ padding: '12px', fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', borderTop: '1px solid var(--border-medium)' }}>
+                                        ADVANCED PANELS HIDDEN (SIMPLE MODE)
+                                    </div>
+                                </>
                             )}
                         </div>
                     </aside>
@@ -302,7 +334,9 @@ export function App() {
                         flex: 1, overflow: 'hidden'
                     }}>
                         <ErrorBoundary name="BacktestPage">
-                            <BacktestPage />
+                            <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 11 }}>Loading Backtest...</div>}>
+                                <BacktestPage />
+                            </Suspense>
                         </ErrorBoundary>
                     </div>
                 )}
@@ -314,19 +348,29 @@ export function App() {
                         flex: 1, overflow: 'hidden'
                     }}>
                         <ErrorBoundary name="ExchangePage">
-                            <ExchangePage exchange={exchangeView} />
+                            <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 11 }}>Loading Exchange...</div>}>
+                                <ExchangePage exchange={exchangeView} />
+                            </Suspense>
                         </ErrorBoundary>
                     </div>
                 )}
 
-            </div>
+            </main>
+
+            {showReplayPanel && (
+                <FloatingReplayPanel />
+            )}
 
             {showBacktestPanel && (
-                <FloatingBacktestPanel onClose={() => setShowBacktestPanel(false)} />
+                <Suspense fallback={null}>
+                    <FloatingBacktestPanel onClose={() => setShowBacktestPanel(false)} />
+                </Suspense>
             )}
 
             {showAlertPanel && (
-                <AlertManager onClose={() => setShowAlertPanel(false)} />
+                <Suspense fallback={null}>
+                    <AlertManager onClose={() => setShowAlertPanel(false)} />
+                </Suspense>
             )}
 
             <ToastContainer />

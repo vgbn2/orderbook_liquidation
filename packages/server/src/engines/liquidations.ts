@@ -15,32 +15,63 @@ export class LiquidationEngine {
     private spotPrice = 0;
     private symbol = 'BTCUSDT';
     private lastHeatmap: any = null;
+    private eventBuffer: LiquidationEvent[] = [];
+    private persistTimer: ReturnType<typeof setInterval> | null = null;
+
+    constructor() {
+        this.persistTimer = setInterval(() => this.persistBuffer(), 5000);
+    }
 
     setSpot(price: number): void {
         this.spotPrice = price;
     }
 
     /**
-     * Record an individual liquidation event (mostly for scatterplot UI bubbles).
-     * The heatmap is now detached from these and modeled mathematically.
+     * Record an individual liquidation event.
+     * Buffers events for batch insertion.
      */
     addEvent(event: LiquidationEvent): void {
-        query(
-            `INSERT INTO liquidation_events (time, exchange, symbol, price, size_usd, side)
-       VALUES (to_timestamp($1), $2, $3, $4, $5, $6)
-       ON CONFLICT DO NOTHING`,
-            [
-                Math.floor(event.time / 1000),
-                event.exchange,
-                event.symbol,
-                event.price,
-                event.size_usd,
-                event.side,
-            ],
-        ).catch((err) => logger.error({ err }, 'Failed to persist liquidation'));
+        this.eventBuffer.push(event);
 
-        // Broadcast individual event a scatter plot bubble layer
+        // Broadcast individual event a scatter plot bubble layer immediately for UI responsiveness
         clientHub.broadcast('liquidations' as any, event);
+
+        // If buffer gets too large, trigger early persist
+        if (this.eventBuffer.length >= 500) {
+            this.persistBuffer();
+        }
+    }
+
+    private async persistBuffer() {
+        if (this.eventBuffer.length === 0) return;
+
+        const events = [...this.eventBuffer];
+        this.eventBuffer = [];
+
+        try {
+            const values: any[] = [];
+            const placeholders = events.map((ev, i) => {
+                const base = i * 6;
+                values.push(
+                    Math.floor(ev.time / 1000),
+                    ev.exchange,
+                    ev.symbol,
+                    ev.price,
+                    ev.size_usd,
+                    ev.side
+                );
+                return `(to_timestamp($${base + 1}), $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+            }).join(', ');
+
+            await query(
+                `INSERT INTO liquidation_events (time, exchange, symbol, price, size_usd, side)
+                 VALUES ${placeholders}
+                 ON CONFLICT DO NOTHING`,
+                values
+            );
+        } catch (err) {
+            logger.error({ err }, 'Failed to batch persist liquidations');
+        }
     }
 
     /**

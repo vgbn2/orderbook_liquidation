@@ -13,7 +13,7 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
     const {
         tradingConfirmations, setTradingConfirmations,
         theme, setTheme,
-        chartLayout, setChartLayout
+        uiComplexity, setUiComplexity
     } = useSettingsStore();
 
     useEffect(() => {
@@ -86,6 +86,7 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Theme</span>
                     <select
+                        aria-label="Theme selection"
                         className="inp inp-select"
                         style={{ width: 100, height: 28, fontSize: 'var(--text-xs)' }}
                         value={theme}
@@ -100,14 +101,15 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Chart Layout</span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>UI Complexity</span>
                     <select
+                        aria-label="UI complexity selection"
                         className="inp inp-select"
                         style={{ width: 100, height: 28, fontSize: 'var(--text-xs)' }}
-                        value={chartLayout}
+                        value={uiComplexity}
                         onChange={(e) => {
-                            setChartLayout(e.target.value as any);
-                            showToast(`Chart layout changed to ${e.target.value}`, 'info', 'system', true);
+                            setUiComplexity(e.target.value as any);
+                            showToast(`UI mode changed to ${e.target.value}`, 'info', 'system', true);
                         }}
                     >
                         <option value="Advanced">Advanced</option>

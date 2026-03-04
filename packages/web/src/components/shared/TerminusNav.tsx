@@ -265,11 +265,13 @@ function Dropdown({ item }: { item: any }) {
                             onClick={() => {
                                 if (it.label === 'Alert Manager') {
                                     window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_ALERTS'));
+                                } else if (it.label === 'Market Replay' || it.label === 'Replay') {
+                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_REPLAY'));
                                 } else if (it.label === 'Clusters') {
                                     window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'liq_clusters' } }));
                                 } else if (it.label === 'Resting Liq') {
                                     window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'resting_liq' } }));
-                                } else if (['Backtest', 'Paper Trade', 'Replay', 'Optimize', 'Equity Curve', 'Trade Log', 'Drawdown', 'Heatmap'].includes(it.label)) {
+                                } else if (['Backtest', 'Paper Trade', 'Optimize', 'Equity Curve', 'Trade Log', 'Drawdown', 'Heatmap'].includes(it.label)) {
                                     setView('backtest');
                                 } else if (it.label !== "Settings") {
                                     showToast(`Navigating to ${it.label}...`, 'info', 'system', true);
@@ -804,12 +806,11 @@ export function TerminusNav() {
             )}
 
             {/* ── SETTINGS POPOVER ───────────────────────────────── */}
-            {settingsOpen && (
-                <SettingsPopover
-                    anchor={settingsBtnRef.current!}
-                    onClose={() => setSettingsOpen(false)}
-                />
-            )}
+            <SettingsPopover
+                isOpen={settingsOpen}
+                anchorEl={settingsBtnRef.current}
+                onClose={() => setSettingsOpen(false)}
+            />
         </div>
     );
 }

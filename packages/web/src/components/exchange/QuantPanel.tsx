@@ -1,5 +1,6 @@
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, useRef, useEffect, useCallback } from 'react';
 import { useMarketDataStore } from '../../stores/marketDataStore';
+import { useCandleStore } from '../../stores/candleStore';
 
 // ── Gaussian bell curve helper ──────────────────────────────────────────────
 function gaussian(x: number, mean: number, std: number): number {
@@ -148,6 +149,21 @@ function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
 // ── Main QuantPanel ──────────────────────────────────────────────────────────
 export function QuantPanel() {
     const quantSnapshot = useMarketDataStore((s) => s.quantSnapshot);
+    const lockedQuantSymbol = useMarketDataStore((s) => s.lockedQuantSymbol);
+    const setLockedQuantSymbol = useMarketDataStore((s) => s.setLockedQuantSymbol);
+    const currentSymbol = useCandleStore((s) => s.symbol);
+
+    const toggleLock = useCallback(() => {
+        if (lockedQuantSymbol) {
+            // Unlock — clear the lock, allow new updates
+            setLockedQuantSymbol(null);
+        } else {
+            // Lock — freeze on the current symbol
+            setLockedQuantSymbol(currentSymbol);
+        }
+    }, [lockedQuantSymbol, currentSymbol, setLockedQuantSymbol]);
+
+    const isLocked = !!lockedQuantSymbol;
 
     const bias = useMemo(() => {
         if (!quantSnapshot?.sigmaGrid) return null;
@@ -171,11 +187,46 @@ export function QuantPanel() {
 
     return (
         <>
-            {/* MARKET REGIME */}
             <div className="panel-section">
                 <div className="p-head">
                     <span>MARKET REGIME</span>
-                    <span style={{ color: 'var(--accent)' }}>VOLATILE</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isLocked && (
+                            <span style={{
+                                fontSize: '9px',
+                                color: 'var(--accent)',
+                                fontWeight: 700,
+                                background: 'rgba(0,255,200,0.08)',
+                                padding: '2px 6px',
+                                borderRadius: '3px',
+                                border: '1px solid rgba(0,255,200,0.15)',
+                                letterSpacing: '0.5px'
+                            }}>
+                                🔒 {lockedQuantSymbol}
+                            </span>
+                        )}
+                        <button
+                            onClick={toggleLock}
+                            title={isLocked ? `Unlock (currently locked to ${lockedQuantSymbol})` : 'Lock analysis to current symbol'}
+                            style={{
+                                background: isLocked ? 'rgba(0,255,200,0.12)' : 'transparent',
+                                border: `1px solid ${isLocked ? 'var(--accent)' : 'var(--border-medium)'}`,
+                                borderRadius: '4px',
+                                color: isLocked ? 'var(--accent)' : 'var(--text-muted)',
+                                cursor: 'pointer',
+                                padding: '2px 6px',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                transition: 'all 0.2s',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                            }}
+                        >
+                            {isLocked ? '🔓' : '🔒'}
+                        </button>
+                        <span style={{ color: 'var(--accent)' }}>VOLATILE</span>
+                    </div>
                 </div>
                 <div className="p-body">
                     <div style={{ display: 'flex', gap: '12px' }}>

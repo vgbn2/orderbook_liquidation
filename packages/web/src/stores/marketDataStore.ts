@@ -82,11 +82,22 @@ interface MarketDataState {
     quantSnapshot: any | null;
     setQuantSnapshot: (s: any) => void;
 
+    // QuantPanel lock — freeze analytics on a specific symbol
+    lockedQuantSymbol: string | null;
+    setLockedQuantSymbol: (s: string | null) => void;
+
     // Replay
     isReplayMode: boolean;
     setReplayMode: (v: boolean) => void;
     replayTimestamp: number | null;
     setReplayTimestamp: (ts: number | null) => void;
+    replayConfig: {
+        startTime: number | null;
+        endTime: number | null;
+        speed: number;
+        timeframe: string | null;
+    };
+    setReplayConfig: (config: MarketDataState['replayConfig']) => void;
 
     // WebSocket send function (registered by useWebSocket)
     send: (msg: any) => void;
@@ -161,12 +172,26 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
     clearAlerts: () => set({ activeAlerts: [] }),
 
     quantSnapshot: null,
-    setQuantSnapshot: (s) => set({ quantSnapshot: s }),
+    setQuantSnapshot: (s) => {
+        // If QuantPanel is locked, ignore incoming updates
+        if (get().lockedQuantSymbol) return;
+        set({ quantSnapshot: s });
+    },
+
+    lockedQuantSymbol: null,
+    setLockedQuantSymbol: (s) => set({ lockedQuantSymbol: s }),
 
     isReplayMode: false,
     setReplayMode: (v) => set({ isReplayMode: v }),
     replayTimestamp: null,
     setReplayTimestamp: (ts) => set({ replayTimestamp: ts }),
+    replayConfig: {
+        startTime: null,
+        endTime: null,
+        speed: 1,
+        timeframe: null,
+    },
+    setReplayConfig: (config) => set({ replayConfig: config }),
 
     send: () => { },
     setSend: (fn) => set({ send: fn }),

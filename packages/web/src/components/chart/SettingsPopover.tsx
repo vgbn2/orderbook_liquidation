@@ -86,6 +86,7 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Theme</span>
                     <select
+                        aria-label="Theme selection"
                         className="inp inp-select"
                         style={{ width: 100, height: 28, fontSize: 'var(--text-xs)' }}
                         value={theme}
@@ -102,6 +103,7 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Chart Layout</span>
                     <select
+                        aria-label="Chart layout selection"
                         className="inp inp-select"
                         style={{ width: 100, height: 28, fontSize: 'var(--text-xs)' }}
                         value={chartLayout}

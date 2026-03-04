@@ -25,6 +25,8 @@ interface SettingsState {
     setRightPanelWidth: (w: number | ((prev: number) => number)) => void;
     orderbookHeight: number;
     setOrderbookHeight: (h: number | ((prev: number) => number)) => void;
+    uiComplexity: 'Simple' | 'Advanced';
+    setUiComplexity: (v: 'Simple' | 'Advanced') => void;
 }
 
 function safeGet(key: string, fallback: string): string {
@@ -92,5 +94,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         const next = typeof valOrFn === 'function' ? valOrFn(state.orderbookHeight) : valOrFn;
         safeSet('term_orderbook_h', String(next));
         return { orderbookHeight: next };
-    })
+    }),
+    uiComplexity: safeGet('term_ui_complexity', 'Advanced') as 'Simple' | 'Advanced',
+    setUiComplexity: (v) => {
+        safeSet('term_ui_complexity', v);
+        set({ uiComplexity: v });
+    }
 }));

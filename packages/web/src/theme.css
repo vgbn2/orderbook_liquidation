@@ -1,0 +1,115 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS — single source of truth
+   Migrated from index.css for better maintainability.
+═══════════════════════════════════════════════════ */
+:root {
+    /* ── Background Colors ── */
+    --bg-base: #07090d;
+    /* Deep background (behind everything) */
+    --bg-surface: #0d1117;
+    /* Main component background */
+    --bg-raised: #131920;
+    /* Slightly lighter for cards/panels */
+    --bg-overlay: #1a2230;
+    /* Lightest background for popovers/tooltips */
+
+    /* ── Accent & Highlights ── */
+    --accent: #00ffc8;
+    /* Primary brand color (Cyan) */
+    --accent-dim: rgba(0, 255, 200, 0.10);
+    /* Faded background version */
+    --accent-border: rgba(0, 255, 200, 0.28);
+    /* Border version */
+
+    /* ── Status Colors ── */
+    --positive: #00c87a;
+    /* Bullish / Win / Success (Green) */
+    --negative: #ff3b5c;
+    /* Bearish / Loss / Error (Red) */
+    --warning: #f0c040;
+    /* Alerts / Warnings (Amber) */
+    --neutral: #5a6070;
+    /* Disabled / Placeholder state (Grey) */
+
+    /* ── Text Colors ── */
+    --text-primary: #f5f3ed;
+    /* Headers and high-emphasis text */
+    --text-secondary: #e1e5e9;
+    /* Main labels and secondary info */
+    --text-muted: #e7eaf0;
+    /* De-emphasized helper text */
+    --text-accent: #00ffc8;
+    /* Text that uses the brand color */
+
+    /* ── Borders & Dividers ── */
+    --border-strong: rgba(255, 255, 255, 0.11);
+    --border-medium: rgba(255, 255, 255, 0.07);
+    --border-subtle: rgba(255, 255, 255, 0.03);
+
+    /* ── Typography ── */
+    --font: 'JetBrains Mono', 'Courier New', monospace;
+
+    /* ── Font Sizes ── */
+    --text-xs: 9px;
+    --text-sm: 10px;
+    --text-md: 12px;
+    --text-lg: 14px;
+    --text-xl: 18px;
+    --text-xxl: 24px;
+
+    /* ── Sizing & Spacing ── */
+    --h-topnav: 44px;
+    /* Top navigation bar height */
+    --h-ticker: 30px;
+    /* Market ticker height */
+    --h-toolbar: 38px;
+    /* Chart toolbar height */
+    --h-phead: 34px;
+    /* Panel header height */
+    --h-input: 30px;
+    /* Default input height */
+    --h-btn-sm: 22px;
+    /* Small button height */
+    --h-btn-md: 28px;
+    /* Standard button height */
+
+    /* ── Border Radii ── */
+    --r-sm: 3px;
+    --r-md: 5px;
+    --r-lg: 8px;
+    --r-pill: 100px;
+
+    /* ── Layout Defaults ── */
+    --right-w: 272px;
+    /* Default width for right sidebar panels */
+
+    /* ── System Logic Mappings ── */
+    /* DO NOT EDIT THESE — they map the clean names above to legacy code */
+    --color-bg-base: var(--bg-base);
+    --color-bg-surface: var(--bg-surface);
+    --color-bg-raised: var(--bg-raised);
+    --color-bg-overlay: var(--bg-overlay);
+    --color-accent: var(--accent);
+    --color-accent-dim: var(--accent-dim);
+    --color-accent-border: var(--accent-border);
+    --color-positive: var(--positive);
+    --color-negative: var(--negative);
+    --color-warning: var(--warning);
+    --color-neutral: var(--neutral);
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-muted: var(--text-muted);
+    --color-border-strong: var(--border-strong);
+    --color-border-medium: var(--border-medium);
+    --color-border-subtle: var(--border-subtle);
+    --font-mono: var(--font);
+    --bg-primary: var(--bg-base);
+    --bg-secondary: var(--bg-surface);
+    --bg-panel: var(--bg-raised);
+    --border: var(--border-medium);
+    --cyan: var(--accent);
+    --red: var(--negative);
+    --green: var(--positive);
+}

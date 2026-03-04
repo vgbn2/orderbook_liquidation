@@ -14,11 +14,13 @@ export function useLayoutResizer({
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         setIsResizing(true);
+        document.body.style.cursor = 'col-resize';
         e.preventDefault();
     }, []);
 
     const handleVMouseDown = useCallback((e: React.MouseEvent) => {
         setIsVResizing(true);
+        document.body.style.cursor = 'row-resize';
         e.preventDefault();
     }, []);
 
@@ -46,6 +48,7 @@ export function useLayoutResizer({
         const handleMouseUp = () => {
             setIsResizing(false);
             setIsVResizing(false);
+            document.body.style.cursor = '';
         };
 
         window.addEventListener('mousemove', handleMouseMove);

@@ -1,4 +1,4 @@
-import { CandleData } from '../stores/marketStore';
+import { CandleData } from '../types';
 
 export interface VRVPRow {
     priceLow: number;
