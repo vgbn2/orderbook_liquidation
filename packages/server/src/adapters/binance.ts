@@ -491,7 +491,7 @@ export class BinanceAdapter implements ExchangeAdapter {
                         this.tradeBatch.push(trade);
 
                         // Fix 2: Queue Database Inserts to prevent Connection Pool exhaustion
-                        const MIN_TRADE_USD = 100_000;
+                        const MIN_TRADE_USD = 1_000_000;
                         if (trade.price * trade.qty >= MIN_TRADE_USD) {
                             tradeBatcher.add(trade);
                         }
