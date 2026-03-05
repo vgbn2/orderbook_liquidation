@@ -9,7 +9,8 @@
 
 export interface LiqEvent {
     price: number;
-    size: number;          // USD value
+    size?: number;         // Legacy / fallback
+    size_usd?: number;     // USD value from server
     side: 'long' | 'short';
     timestamp: number;
     exchange?: string;
@@ -35,6 +36,7 @@ export class LiqClusterEngine {
     clusters: LiqCluster[] = [];
 
     process(event: LiqEvent): void {
+        const size = event.size_usd ?? event.size ?? 0;
         // Find existing cluster within tolerance
         const existing = this.clusters.find(c =>
             c.side === event.side &&
@@ -43,7 +45,7 @@ export class LiqClusterEngine {
         );
 
         if (existing) {
-            existing.totalSize += event.size;
+            existing.totalSize += size;
             existing.count += 1;
             existing.lastUpdated = event.timestamp;
             existing.price = (existing.price * (existing.count - 1) + event.price) / existing.count;
@@ -51,10 +53,10 @@ export class LiqClusterEngine {
         } else {
             this.clusters.push({
                 price: event.price,
-                totalSize: event.size,
+                totalSize: size,
                 count: 1,
                 side: event.side,
-                intensity: this.normalize(event.size),
+                intensity: this.normalize(size),
                 lastUpdated: event.timestamp,
                 firstSeen: event.timestamp,
             });
