@@ -1,16 +1,10 @@
 import { useMemo } from 'react';
 import { useMarketDataStore, LiqEvent } from '../../stores/marketDataStore';
 import { PanelSection, StatCard, Badge } from '../shared/UI';
+import { fmt, safe } from '../../utils/safe';
+import { PanelSkeleton } from '../shared/PanelSkeleton';
 
 // ── helpers ─────────────────────────────────────────────────────────────────
-
-const fmtMoney = (v: number | undefined | null) => {
-    if (v === undefined || v === null || isNaN(v)) return '$0';
-    if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-    if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
-    if (v >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
-    return `$${v.toFixed(0)}`;
-};
 
 const timeAgo = (ts: number) => {
     const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -21,7 +15,6 @@ const timeAgo = (ts: number) => {
 
 /**
  * Interpolate through a heat gradient based on intensity 0..1
- * cold → deep red → orange → bright yellow
  */
 function heatColor(intensity: number): string {
     const stops = [
@@ -48,10 +41,12 @@ function heatColor(intensity: number): string {
 // ── WhaleFeed sub-component ─────────────────────────────────────────────────
 
 function WhaleFeed() {
-    const significantLiqs = useMarketDataStore((s) => s.significantLiquidations);
+    const significantLiqsRaw = useMarketDataStore((s) => s.significantLiquidations);
     const WHALE_THRESHOLD = 500_000;
 
-    if (!significantLiqs || significantLiqs.length === 0) {
+    const events = useMemo(() => safe.arr<LiqEvent>(significantLiqsRaw), [significantLiqsRaw]);
+
+    if (events.length === 0) {
         return (
             <div style={{ padding: '8px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '10px' }}>
                 AWAITING SIGNIFICANT EVENTS...
@@ -61,10 +56,11 @@ function WhaleFeed() {
 
     return (
         <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            {significantLiqs.slice(0, 20).map((event: LiqEvent, i: number) => {
-                const size = event.size_usd ?? event.size ?? 0;
+            {events.slice(0, 20).map((event: LiqEvent, i: number) => {
+                const size = safe.num(event.size_usd ?? event.size);
                 const isWhale = size >= WHALE_THRESHOLD;
-                const isLong = event.side === 'long';
+                const side = safe.str(event.side).toLowerCase();
+                const isLong = side === 'long';
                 const color = isLong ? 'var(--color-negative)' : 'var(--color-positive)';
                 const icon = isLong ? '▼' : '▲';
 
@@ -72,35 +68,26 @@ function WhaleFeed() {
                     <div
                         key={`${event.timestamp}-${i}`}
                         onClick={() => {
-                            window.dispatchEvent(new CustomEvent('TERMINUS_HIGHLIGHT_PRICE', { detail: { price: event.price } }));
+                            window.dispatchEvent(new CustomEvent('TERMINUS_HIGHLIGHT_PRICE', { detail: { price: safe.num(event.price) } }));
                         }}
                         style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '3px 6px',
-                            fontSize: '10px',
-                            fontFamily: 'var(--font-mono)',
-                            cursor: 'pointer',
-                            borderLeft: `2px solid ${color}`,
+                            display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 6px', fontSize: '10px',
+                            fontFamily: 'var(--font-mono)', cursor: 'pointer', borderLeft: `2px solid ${color}`,
                             background: isWhale ? 'rgba(255,235,59,0.06)' : 'transparent',
-                            transition: 'background 0.15s',
                         }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = isWhale ? 'rgba(255,235,59,0.06)' : 'transparent'; }}
                     >
                         <span style={{ color, fontWeight: 700, width: '50px' }}>
-                            {icon} {event.side.toUpperCase()}
+                            {icon} {side.toUpperCase()}
                         </span>
                         <span style={{ color: 'var(--color-text-primary)', flex: 1 }}>
-                            ${event.price.toLocaleString()}
+                            {fmt.price(event.price)}
                         </span>
                         <span style={{ color, fontWeight: 600 }}>
-                            {fmtMoney(size)}
+                            {fmt.money(size)}
                         </span>
                         {isWhale && <span style={{ fontSize: '11px' }}>⚡</span>}
                         <span style={{ color: 'var(--color-text-muted)', width: '48px', textAlign: 'right', fontSize: '9px' }}>
-                            {timeAgo(event.timestamp)}
+                            {timeAgo(safe.num(event.timestamp))}
                         </span>
                     </div>
                 );
@@ -112,57 +99,73 @@ function WhaleFeed() {
 // ── Main LiquidationPanel ───────────────────────────────────────────────────
 
 export function LiquidationPanel() {
-    const liqData = useMarketDataStore((s) => s.liquidations);
+    // ── 1. ALL HOOKS UNCONDITIONALLY ──
+    const liqDataRaw = useMarketDataStore((s) => s.liquidations);
 
-    // ── Sentiment Gauge (Long vs Short) ─────────────────────────────────────
-    const { longLiqTotal, shortLiqTotal, longPct, shortPct, sentimentLabel, sentimentColor } = useMemo(() => {
-        const heatmap = liqData?.heatmap || [];
-        const longs = heatmap.reduce((s: number, b: any) => s + (b.long_liq_usd ?? b.total * 0.5), 0);
-        const shorts = heatmap.reduce((s: number, b: any) => s + (b.short_liq_usd ?? b.total * 0.5), 0);
-        const total = longs + shorts || 1;
-        const lPct = (longs / total) * 100;
-        const sPct = (shorts / total) * 100;
-        const label = lPct > 70 ? 'LONG FLUSH' : sPct > 70 ? 'SHORT SQUEEZE' : 'BALANCED';
-        const color = lPct > 70 ? 'var(--color-negative)' : sPct > 70 ? 'var(--color-positive)' : 'var(--color-text-muted)';
-        return { longLiqTotal: longs, shortLiqTotal: shorts, longPct: lPct, shortPct: sPct, sentimentLabel: label, sentimentColor: color };
-    }, [liqData?.heatmap]);
+    const derived = useMemo(() => {
+        if (!liqDataRaw) return null;
 
-    // ── Heatmap with Heat Gradient + Top 3 Labels ───────────────────────────
-    const { maxTotal, top3Prices, minPrice, maxPrice } = useMemo(() => {
-        const heatmap = liqData?.heatmap || [];
-        const max = Math.max(...heatmap.map((b: { total: number }) => b.total), 1);
-        const sorted = [...heatmap].sort((a: any, b: any) => b.total - a.total);
-        const top3 = new Set(sorted.slice(0, 3).map((b: any) => b.price));
-        const minP = heatmap.length > 0 ? heatmap[0].price : 0;
-        const maxP = heatmap.length > 0 ? heatmap[heatmap.length - 1].price : 0;
-        return { maxTotal: max, top3Prices: top3, minPrice: minP, maxPrice: maxP };
-    }, [liqData?.heatmap]);
+        const heatmap = safe.arr(liqDataRaw.heatmap);
+        const totalUsd = safe.num(liqDataRaw.total_usd);
+        const eventCount = safe.num(liqDataRaw.event_count);
 
-    if (!liqData) {
+        let longs = 0;
+        let shorts = 0;
+        heatmap.forEach((b: any) => {
+            longs += safe.num(b.long_liq_usd ?? (safe.num(b.total) * 0.5));
+            shorts += safe.num(b.short_liq_usd ?? (safe.num(b.total) * 0.5));
+        });
+
+        const totalValue = longs + shorts || 1;
+        const longPct = (longs / totalValue) * 100;
+        const shortPct = (shorts / totalValue) * 100;
+
+        const sentimentLabel = longPct > 70 ? 'LONG FLUSH' : shortPct > 70 ? 'SHORT SQUEEZE' : 'BALANCED';
+        const sentimentColor = longPct > 70 ? 'var(--color-negative)' : shortPct > 70 ? 'var(--color-positive)' : 'var(--color-text-muted)';
+
+        const maxTotal = Math.max(...heatmap.map((b: any) => safe.num(b.total)), 1);
+        const sorted = [...heatmap].sort((a: any, b: any) => safe.num(b.total) - safe.num(a.total));
+        const top3Prices = new Set(sorted.slice(0, 3).map((b: any) => safe.num(b.price)));
+        const minPrice = heatmap.length > 0 ? safe.num(heatmap[0].price) : 0;
+        const maxPrice = heatmap.length > 0 ? safe.num(heatmap[heatmap.length - 1].price) : 0;
+
+        return {
+            heatmap, totalUsd, eventCount,
+            longLiqTotal: longs, shortLiqTotal: shorts, longPct, shortPct,
+            sentimentLabel, sentimentColor,
+            maxTotal, top3Prices, minPrice, maxPrice
+        };
+    }, [liqDataRaw]);
+
+    // ── 2. EARLY RETURN AFTER HOOKS ──
+    if (!liqDataRaw || !derived) {
         return (
             <PanelSection title="LIQUIDATION HQ" isCollapsible defaultCollapsed={false}>
-                <div style={{ padding: 'var(--space-4)', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
-                    AWAITING LIQUIDATIONS...
-                </div>
+                <PanelSkeleton label="LIQUIDATION DATA" />
             </PanelSection>
         );
     }
 
-    const { heatmap, total_usd, event_count } = liqData;
+    const {
+        heatmap, totalUsd, eventCount,
+        longLiqTotal, shortLiqTotal, longPct, shortPct,
+        sentimentLabel, sentimentColor,
+        maxTotal, top3Prices, minPrice, maxPrice
+    } = derived;
 
+    // ── 3. RENDER ──
     return (
         <PanelSection title="LIQUIDATION HQ" isCollapsible defaultCollapsed={false}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
 
-                {/* ── Header ── */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Badge type="live" label={`${event_count} EVENTS`} />
+                    <Badge type="live" label={`${eventCount} EVENTS`} />
                     <span className="terminus-label" style={{ color: 'var(--color-negative)' }}>HOT FLOW</span>
                 </div>
 
                 <StatCard
                     label="ESTIMATED TOTAL LIQ"
-                    value={fmtMoney(total_usd)}
+                    value={fmt.money(totalUsd)}
                     valueColor="var(--color-negative)"
                 />
 
@@ -175,7 +178,7 @@ export function LiquidationPanel() {
                     }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: '50px' }}>
                             <span style={{ fontSize: '8px', color: 'var(--color-negative)', fontWeight: 700 }}>LONGS</span>
-                            <span style={{ fontSize: '10px', color: 'var(--color-negative)', fontFamily: 'var(--font-mono)' }}>{fmtMoney(longLiqTotal)}</span>
+                            <span style={{ fontSize: '10px', color: 'var(--color-negative)', fontFamily: 'var(--font-mono)' }}>{fmt.money(longLiqTotal)}</span>
                         </div>
                         <div style={{ flex: 1, height: '8px', background: 'var(--color-bg-raised)', borderRadius: '4px', overflow: 'hidden', display: 'flex' }}>
                             <div style={{ width: `${longPct}%`, height: '100%', background: 'var(--color-negative)', transition: 'width 0.3s ease' }} />
@@ -183,47 +186,39 @@ export function LiquidationPanel() {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: '50px' }}>
                             <span style={{ fontSize: '8px', color: 'var(--color-positive)', fontWeight: 700 }}>SHORTS</span>
-                            <span style={{ fontSize: '10px', color: 'var(--color-positive)', fontFamily: 'var(--font-mono)' }}>{fmtMoney(shortLiqTotal)}</span>
+                            <span style={{ fontSize: '10px', color: 'var(--color-positive)', fontFamily: 'var(--font-mono)' }}>{fmt.money(shortLiqTotal)}</span>
                         </div>
                     </div>
                     <div style={{ textAlign: 'center', marginTop: '4px', fontSize: '9px', fontWeight: 700, color: sentimentColor, letterSpacing: '1px' }}>
-                        {sentimentLabel} · {longPct.toFixed(0)}% / {shortPct.toFixed(0)}%
+                        {sentimentLabel} · {fmt.num(longPct, 0)}% / {fmt.num(shortPct, 0)}%
                     </div>
                 </div>
 
-                {/* ── Heatmap bars with Heat Gradient ── */}
+                {/* ── Intensity Map ── */}
                 <div>
                     <span className="terminus-label" style={{ marginBottom: 'var(--space-2)', display: 'block' }}>INTENSITY MAP</span>
                     <div style={{ height: '54px', display: 'flex', alignItems: 'flex-end', gap: '1px', background: 'var(--color-bg-overlay)', padding: '2px', borderRadius: 'var(--radius-sm)', position: 'relative' }}>
-                        {heatmap.map((bucket: { price: number; total: number }) => {
-                            const intensity = bucket.total / maxTotal;
-                            const isTop3 = top3Prices.has(bucket.price);
+                        {heatmap.map((bucket: any) => {
+                            const bPrice = safe.num(bucket.price);
+                            const bTotal = safe.num(bucket.total);
+                            const intensity = bTotal / maxTotal;
+                            const isTop3 = top3Prices.has(bPrice);
                             return (
                                 <div
-                                    key={bucket.price}
+                                    key={bPrice}
                                     style={{
-                                        flex: 1,
-                                        height: `${Math.max(4, intensity * 50)}px`,
-                                        background: heatColor(intensity),
-                                        borderRadius: '1px',
-                                        position: 'relative',
+                                        flex: 1, height: `${Math.max(4, intensity * 50)}px`,
+                                        background: heatColor(intensity), borderRadius: '1px', position: 'relative',
                                     }}
-                                    title={`$${bucket.price.toLocaleString()}: ${fmtMoney(bucket.total)}`}
+                                    title={`${fmt.price(bPrice)}: ${fmt.money(bTotal)}`}
                                 >
                                     {isTop3 && intensity > 0.3 && (
                                         <div style={{
-                                            position: 'absolute',
-                                            top: '-18px',
-                                            left: '50%',
-                                            transform: 'translateX(-50%)',
-                                            fontSize: '7px',
-                                            color: '#fff',
-                                            fontFamily: 'var(--font-mono)',
-                                            whiteSpace: 'nowrap',
-                                            textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-                                            fontWeight: 700,
+                                            position: 'absolute', top: '-18px', left: '50%', transform: 'translateX(-50%)',
+                                            fontSize: '7px', color: '#fff', fontFamily: 'var(--font-mono)',
+                                            whiteSpace: 'nowrap', textShadow: '0 1px 3px rgba(0,0,0,0.8)', fontWeight: 700,
                                         }}>
-                                            {fmtMoney(bucket.total)}
+                                            {fmt.money(bTotal)}
                                         </div>
                                     )}
                                 </div>
@@ -231,9 +226,9 @@ export function LiquidationPanel() {
                         })}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'var(--space-1)', fontSize: '9px', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
-                        <span>${(minPrice / 1000).toFixed(1)}K</span>
+                        <span>{(minPrice / 1000).toFixed(1)}K</span>
                         <span>CLUSTER RANGE</span>
-                        <span>${(maxPrice / 1000).toFixed(1)}K</span>
+                        <span>{(maxPrice / 1000).toFixed(1)}K</span>
                     </div>
                 </div>
 

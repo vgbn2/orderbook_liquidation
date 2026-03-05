@@ -125,7 +125,6 @@ export function App() {
 
     // Fetch on mount and when timeframe changes
     useEffect(() => {
-        setLoading(true);
         fetchHistorical(timeframe, symbol);
     }, [timeframe, symbol, showAggregated, fetchHistorical]);
 

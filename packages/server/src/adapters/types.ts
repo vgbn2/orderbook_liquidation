@@ -168,6 +168,15 @@ export interface ConfluenceZone {
     timestamp: number;
 }
 
+// ── Grade Algorithm ──────────────────────────
+export interface GradeScore {
+    symbol: string;
+    liqRatio: number;      // 0.0 to 1.0 (bullish bias)
+    bullScore: number;
+    bearScore: number;
+    timestamp: number;
+}
+
 // ── Exchange Adapter Interface ────────────────
 export interface ExchangeAdapter {
     readonly name: Exchange;
@@ -190,7 +199,9 @@ export type WSTopic =
     | `trades`
     | `replay`
     | `alerts`
+    | `quant.analytics`
     | `quant.analytics.${string}`
+    | `grade.analytics`
     | `quant.error`
     | 'funding_rate'
     | 'open_interest'

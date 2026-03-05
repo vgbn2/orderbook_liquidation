@@ -595,13 +595,20 @@ export function TerminusNav() {
         // Optimistic UI update
         setSymbol(sym);
 
-        // Clear stale data to show loading/blank states
+        // ── [BUG-3] Clear ALL stale data to prevent visual data bleed ──
         setCandles([]);
         setOrderbook({ bids: [], asks: [], walls: { bid_walls: [], ask_walls: [] } });
         setOptions(null);
         setLiquidations(null);
         setVwaf(null);
         setConfluenceZones([]);
+
+        // Add missing stores from marketDataStore
+        const store = useMarketDataStore.getState();
+        if (store.addTrade) store.addTrade([]);
+        if (store.setConfirmedSweeps) store.setConfirmedSweeps([]);
+        if (store.setOpenInterest) store.setOpenInterest([] as any);
+        if (store.setFundingRates) store.setFundingRates([]);
 
         // Send to server
         send({ action: 'switch_symbol', symbol: sym });

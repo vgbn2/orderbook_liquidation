@@ -14,7 +14,6 @@ import { startBybit, stopBybit } from './adapters/bybit.js';
 import { startOkx, stopOkx } from './adapters/okx.js';
 import { startDeribit, stopDeribit } from './adapters/deribit.js';
 import { startHyperliquid, stopHyperliquid } from './adapters/hyperliquid.js';
-import { startMexc, stopMexc } from './adapters/mexc.js';
 import { startBitget, stopBitget } from './adapters/bitget.js';
 import { startGateio, stopGateio } from './adapters/gateio.js';
 import { ohlcvRoutes } from './routes/ohlcv.js';
@@ -102,10 +101,10 @@ async function start(): Promise<void> {
         logger.info('Connecting to Hyperliquid...');
         startHyperliquid(globalSymbol);
     }
-    if (config.ENABLE_MEXC) {
-        logger.info('Connecting to MEXC...');
-        startMexc(globalSymbol);
-    }
+    // if (config.ENABLE_MEXC) {
+    //     logger.info('Connecting to MEXC...');
+    //     startMexc(globalSymbol);
+    // }
     if (config.ENABLE_BITGET) {
         logger.info('Connecting to Bitget...');
         startBitget(globalSymbol);
@@ -290,7 +289,7 @@ async function start(): Promise<void> {
         }).catch(() => { });
     }, 4_000);
 
-    const SYMBOL_WHITELIST = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'LINKUSDT', 'ADAUSDT'];
+    const SYMBOL_WHITELIST = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'LINKUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'DOTUSDT', 'MATICUSDT'];
     const LAST_SYMBOL_SWITCH = new Map<string, number>();
 
     // ── Health endpoint ───────────────────────────
@@ -443,7 +442,7 @@ async function start(): Promise<void> {
                         stopOkx(oldSymbol);
                         stopDeribit(oldSymbol);
                         stopHyperliquid(oldSymbol);
-                        stopMexc(oldSymbol);
+                        // stopMexc(oldSymbol);
                         stopBitget(oldSymbol);
                         stopGateio(oldSymbol);
 
@@ -451,7 +450,7 @@ async function start(): Promise<void> {
                         startOkx(globalSymbol);
                         startDeribit(globalSymbol);
                         startHyperliquid(globalSymbol);
-                        startMexc(globalSymbol);
+                        // startMexc(globalSymbol);
                         startBitget(globalSymbol);
                         startGateio(globalSymbol);
 
@@ -511,7 +510,7 @@ async function shutdown(signal: string): Promise<void> {
     stopOkx(globalSymbol);
     stopDeribit(globalSymbol);
     stopHyperliquid(globalSymbol);
-    stopMexc(globalSymbol);
+    // stopMexc(globalSymbol);
     stopBitget(globalSymbol);
     stopGateio(globalSymbol);
     await wsManager.disconnectAll();

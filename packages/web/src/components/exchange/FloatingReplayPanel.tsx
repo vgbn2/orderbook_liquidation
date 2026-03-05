@@ -252,7 +252,13 @@ export function FloatingReplayPanel() {
                             </div>
 
                             <div style={{ display: 'flex', gap: '8px' }}>
-                                <button className="btn" style={{ flex: 1, background: 'var(--bg-raised)' }}>PAUSE</button>
+                                <button
+                                    className="btn"
+                                    onClick={() => send({ action: 'pause_replay' })}
+                                    style={{ flex: 1, background: 'var(--bg-raised)' }}
+                                >
+                                    PAUSE
+                                </button>
                                 <button className="btn" onClick={stopReplay} style={{ flex: 1, color: 'var(--negative)', borderColor: 'var(--negative)' }}>EXIT</button>
                             </div>
                         </div>

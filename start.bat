@@ -3,11 +3,10 @@ title TERMINUS — Trading Intelligence Dashboard
 color 0A
 
 echo.
-echo  ╔══════════════════════════════════════════════════════════╗
-echo  ║          TERMINUS — Trading Intelligence Dashboard      ║
-echo  ║                                                          ║
-echo  ║  Orderbook · Options Flow · Liquidations · VWAF · GEX   ║
-echo  ╚══════════════════════════════════════════════════════════╝
+echo            TERMINUS — Trading Intelligence Dashboard      
+echo                                                            
+echo    Orderbook · Options Flow · Liquidations · VWAF · GEX   
+echo  
 echo.
 
 :: ── Check prerequisites ──────────────────────────────────────
@@ -83,13 +82,12 @@ echo.
 :: ── Start everything ─────────────────────────────────────────
 echo  [5/5] Starting TERMINUS...
 echo.
-echo  ┌──────────────────────────────────────────────────────────┐
-echo  │  Backend:   http://localhost:8080                        │
-echo  │  Frontend:  http://localhost:5173                        │
-echo  │  Health:    http://localhost:8080/health                 │
-echo  │                                                          │
-echo  │  Press Ctrl+C to stop                                    │
-echo  └──────────────────────────────────────────────────────────┘
+echo    Backend:   http://localhost:8080                        
+echo    Frontend:  http://localhost:5173                        
+echo    Health:    http://localhost:8080/health                 
+echo                                                            
+echo    Press Ctrl+C to stop                                    
+echo  
 echo.
 
 :: ── Start frontend dev server in background ──────────────────

@@ -8,6 +8,7 @@ import type {
     OptionsAnalytics,
     LiquidationHeatmapEntry,
     VWAFData,
+    GradeScore,
 } from '../adapters/types.js';
 
 // ══════════════════════════════════════════════════════════════
@@ -192,7 +193,28 @@ export class ConfluenceEngine {
         zones.sort((a, b) => b.score - a.score);
 
         this.lastZones = zones;
-        return zones.slice(0, 8); // Top 8 zones
+
+        // ── Grade Algorithm: Compute liqRatio ───────────
+        const topZones = zones.slice(0, 8);
+        const bullScore = topZones
+            .filter(z => z.center < spot)
+            .reduce((s, z) => s + z.score, 0);
+        const bearScore = topZones
+            .filter(z => z.center > spot)
+            .reduce((s, z) => s + z.score, 0);
+
+        const totalScore = bullScore + bearScore;
+        const liqRatio = totalScore > 0 ? bullScore / totalScore : 0.5;
+
+        clientHub.broadcast('grade.analytics' as any, {
+            symbol: (this.inputs as any).symbol || 'BTCUSDT',
+            liqRatio,
+            bullScore,
+            bearScore,
+            timestamp: Date.now()
+        });
+
+        return topZones; // Top 8 zones
     }
 
     private finalizeZone(data: { prices: number[]; reasons: ConfluenceReason[] }): ConfluenceZone {

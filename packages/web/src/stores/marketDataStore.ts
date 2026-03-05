@@ -54,7 +54,7 @@ interface MarketDataState {
     fundingRates: FundingRateData[];
     setFundingRates: (rates: FundingRateData[]) => void;
     openInterest: OpenInterestData[];
-    setOpenInterest: (oi: OpenInterestData) => void;
+    setOpenInterest: (oi: OpenInterestData[]) => void;
 
     // VWAF
     vwaf: VWAFDataStore | null;
@@ -129,12 +129,12 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
 
     liquidations: null,
     setLiquidations: (d) => set({ liquidations: d }),
-    liqClusters: [],
+    liqClusters: [] as (LiqCluster & { ageFactor: number })[],
     addLiquidation: (event) => {
         liqClusterEngine.process(event);
         set({ liqClusters: liqClusterEngine.getVisible(Date.now()) });
     },
-    significantLiquidations: [],
+    significantLiquidations: [] as LiqEvent[],
     addSignificantLiquidation: (event) => {
         if (!event) return;
         const size = event.size_usd ?? event.size ?? 0;
@@ -162,21 +162,17 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
     setFundingRates: (rates) => set({ fundingRates: rates }),
 
     openInterest: [],
-    setOpenInterest: (oi) => set((s) => {
-        const next = [...s.openInterest, oi];
-        if (next.length > 500) next.shift();
-        return { openInterest: next };
-    }),
+    setOpenInterest: (oi) => set({ openInterest: oi }),
 
     vwaf: null,
     setVwaf: (v) => set({ vwaf: v }),
 
-    confluenceZones: null,
+    confluenceZones: [] as ConfluenceZone[],
     setConfluenceZones: (z) => set({ confluenceZones: z }),
 
-    ictData: null,
+    ictData: { fvgs: [], orderBlocks: [], sweeps: [], swingHighs: [], swingLows: [] },
     setIctData: (d) => set({ ictData: d }),
-    confirmedSweeps: [],
+    confirmedSweeps: [] as ConfirmedSweep[],
     setConfirmedSweeps: (s) => set({ confirmedSweeps: s }),
 
     activeAlerts: [],

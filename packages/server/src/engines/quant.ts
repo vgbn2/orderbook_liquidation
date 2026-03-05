@@ -3,7 +3,8 @@ import { redis } from '../db/redis.js';
 import { clientHub } from '../ws/client-hub.js';
 import { binanceAdapter } from '../adapters/binance.js';
 import YahooFinance from 'yahoo-finance2';
-const yf = new YahooFinance();
+// Suppress deprecation warning because the library gracefully maps historical() -> chart() under the hood
+const yf = new YahooFinance({ suppressNotices: ['ripHistorical'] });
 
 import { computeQuantAnalytics, MacroPrices } from './quantMath.js';
 

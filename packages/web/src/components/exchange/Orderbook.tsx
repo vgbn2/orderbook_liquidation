@@ -1,4 +1,5 @@
 import { useMarketDataStore } from '../../stores/marketDataStore';
+import * as safe from '../../utils/safe';
 
 export function Orderbook() {
     const { orderbook } = useMarketDataStore();
@@ -61,7 +62,7 @@ export function Orderbook() {
                                 className="ob-depth-bar ob-depth-ask"
                                 style={{ width: `${(level.qty / maxQty) * 100}%` }}
                             />
-                            <span className="ob-price">{level.price.toFixed(1)}</span>
+                            <span className="ob-price">{safe.fmt.price(level.price)}</span>
                             <span className="ob-qty">{formatQty(level.qty)}</span>
                         </div>
                     ))}
@@ -84,7 +85,7 @@ export function Orderbook() {
                                 className="ob-depth-bar ob-depth-bid"
                                 style={{ width: `${(level.qty / maxQty) * 100}%` }}
                             />
-                            <span className="ob-price">{level.price.toFixed(1)}</span>
+                            <span className="ob-price">{safe.fmt.price(level.price)}</span>
                             <span className="ob-qty">{formatQty(level.qty)}</span>
                         </div>
                     ))}

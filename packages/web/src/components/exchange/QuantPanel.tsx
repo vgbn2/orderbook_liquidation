@@ -1,6 +1,8 @@
 import { useMemo, useRef, useEffect, useCallback } from 'react';
 import { useMarketDataStore } from '../../stores/marketDataStore';
 import { useCandleStore } from '../../stores/candleStore';
+import { fmt, safe } from '../../utils/safe';
+import { PanelSkeleton } from '../shared/PanelSkeleton';
 
 // ── Gaussian bell curve helper ──────────────────────────────────────────────
 function gaussian(x: number, mean: number, std: number): number {
@@ -8,36 +10,32 @@ function gaussian(x: number, mean: number, std: number): number {
 }
 
 // ── Next-day directional bias from sigma skew ───────────────────────────────
-function computeDirectionalBias(sigmaGrid: { sigma: number; probability: number; pctMove: number }[]) {
-    if (!sigmaGrid?.length) return null;
-    const totalProb = sigmaGrid.reduce((s, r) => s + r.probability, 0) || 1;
-    const expectedMove = sigmaGrid.reduce((s, r) => s + (r.pctMove * r.probability) / totalProb, 0);
-    const bullWeight = sigmaGrid.filter(r => r.pctMove >= 0).reduce((s, r) => s + r.probability, 0);
-    const bearWeight = sigmaGrid.filter(r => r.pctMove < 0).reduce((s, r) => s + r.probability, 0);
+function computeDirectionalBias(sigmaGrid: any[]) {
+    const sg = safe.arr(sigmaGrid);
+    if (sg.length === 0) return null;
+
+    const totalProb = sg.reduce((s, r) => s + safe.num(r.probability), 0) || 1;
+    const expectedMove = sg.reduce((s, r) => s + (safe.num(r.pctMove) * safe.num(r.probability)) / totalProb, 0);
+    const bullWeight = sg.filter(r => safe.num(r.pctMove) >= 0).reduce((s, r) => s + safe.num(r.probability), 0);
+    const bearWeight = sg.filter(r => safe.num(r.pctMove) < 0).reduce((s, r) => s + safe.num(r.probability), 0);
     const total = bullWeight + bearWeight || 1;
     const bullPct = (bullWeight / total) * 100;
     const bearPct = (bearWeight / total) * 100;
     const direction = expectedMove >= 0 ? 'BULLISH' : 'BEARISH';
     const confidence = Math.abs(bullPct - bearPct);
     const strength = confidence > 20 ? 'STRONG' : confidence > 8 ? 'MODERATE' : 'WEAK';
-    return { direction, expectedMove, bullPct, bearPct, confidence, strength };
-}
 
-function formatPrice(p: number): string {
-    if (typeof p !== 'number' || isNaN(p)) return '$0';
-    if (p < 0.01) return '$' + p.toPrecision(3);
-    if (p < 1) return '$' + p.toFixed(4);
-    if (p < 1000) return '$' + p.toFixed(2);
-    return '$' + (p / 1000).toFixed(1) + 'K';
+    return { direction, expectedMove, bullPct, bearPct, confidence, strength };
 }
 
 // ── Bell Curve Canvas ───────────────────────────────────────────────────────
 function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const sg = safe.arr(sigmaGrid);
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas || !sigmaGrid?.length) return;
+        if (!canvas || sg.length < 2) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
@@ -49,15 +47,15 @@ function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
         ctx.scale(dpr, dpr);
         ctx.clearRect(0, 0, W, H);
 
-        const sigmas = sigmaGrid.map((r: any) => r.sigma);
+        const sigmas = sg.map(r => safe.num(r.sigma));
         const minS = Math.min(...sigmas);
         const maxS = Math.max(...sigmas);
         const range = maxS - minS || 1;
 
-        const totalProb = sigmaGrid.reduce((s: number, r: any) => s + r.probability, 0) || 1;
-        const meanSigma = sigmaGrid.reduce((s: number, r: any) => s + r.sigma * r.probability, 0) / totalProb;
+        const totalProb = sg.reduce((s, r) => s + safe.num(r.probability), 0) || 1;
+        const meanSigma = sg.reduce((s, r) => s + safe.num(r.sigma) * safe.num(r.probability), 0) / totalProb;
         const stdSigma = Math.sqrt(
-            sigmaGrid.reduce((s: number, r: any) => s + r.probability * Math.pow(r.sigma - meanSigma, 2), 0) / totalProb
+            sg.reduce((s, r) => s + safe.num(r.probability) * Math.pow(safe.num(r.sigma) - meanSigma, 2), 0) / totalProb
         ) || 1;
 
         const pad = { l: 4, r: 4, t: 8, b: 14 };
@@ -66,7 +64,7 @@ function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
         const toX = (s: number) => pad.l + ((s - minS) / range) * cw;
         const toY = (v: number) => pad.t + (1 - v) * ch;
 
-        const steps = 200;
+        const steps = 150;
         const pts: [number, number][] = [];
         let maxV = 0;
         for (let i = 0; i <= steps; i++) {
@@ -112,7 +110,7 @@ function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Mean sigma peak marker (yellow)
+        // Peak marker
         ctx.beginPath();
         ctx.moveTo(toX(meanSigma), pad.t + 2);
         ctx.lineTo(toX(meanSigma), pad.t + ch);
@@ -120,18 +118,14 @@ function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Sigma axis labels replaced with Price labels
+        // Labels
         ctx.font = '8px JetBrains Mono, monospace';
         ctx.fillStyle = 'rgba(100,100,130,0.85)';
         ctx.textAlign = 'center';
 
-        // Draw price labels for specific sigma points
-        sigmaGrid.forEach((row: any) => {
-            const x = toX(row.sigma);
-            const priceLabel = formatPrice(row.price);
-            ctx.fillText(priceLabel, x, H - 2);
-
-            // Subtle tick
+        sg.forEach((row: any) => {
+            const x = toX(safe.num(row.sigma));
+            ctx.fillText(fmt.price(row.price), x, H - 2);
             ctx.beginPath();
             ctx.moveTo(x, pad.t + ch);
             ctx.lineTo(x, pad.t + ch + 3);
@@ -139,30 +133,21 @@ function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
             ctx.stroke();
         });
 
-        // Y-axis label (Percentage of occurrence)
-        ctx.save();
-        ctx.translate(W - 2, pad.t + ch / 2);
-        ctx.rotate(-Math.PI / 2);
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(100,100,130,0.5)';
-        ctx.font = '10px JetBrains Mono, monospace';
-        ctx.fillText('PROBABILITY %', 0, 0);
-        ctx.restore();
+    }, [sg]);
 
-    }, [sigmaGrid]);
-
+    if (sg.length < 2) return <div style={{ height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 10 }}>Insufficient distribution data</div>;
     return <canvas ref={canvasRef} style={{ width: '100%', height: '110px', display: 'block' }} />;
 }
 
 // ── Main QuantPanel ──────────────────────────────────────────────────────────
 export function QuantPanel() {
+    // ── 1. ALL HOOKS UNCONDITIONALLY ──
     const quantSnapshot = useMarketDataStore((s) => s.quantSnapshot);
     const setQuantSnapshot = useMarketDataStore((s) => s.setQuantSnapshot);
     const lockedQuantSymbol = useMarketDataStore((s) => s.lockedQuantSymbol);
     const setLockedQuantSymbol = useMarketDataStore((s) => s.setLockedQuantSymbol);
     const currentSymbol = useCandleStore((s) => s.symbol);
 
-    // ── 1. Only clear snapshot if it belongs to a different symbol ──────────
     useEffect(() => {
         if (quantSnapshot && quantSnapshot.symbol !== currentSymbol) {
             setQuantSnapshot(null);
@@ -171,50 +156,36 @@ export function QuantPanel() {
 
     const toggleLock = useCallback(() => {
         if (lockedQuantSymbol) {
-            // Unlock — clear the lock, allow new updates
             setLockedQuantSymbol(null);
         } else {
-            // Lock — freeze on the current symbol
             setLockedQuantSymbol(currentSymbol);
         }
     }, [lockedQuantSymbol, currentSymbol, setLockedQuantSymbol]);
 
     const isLocked = !!lockedQuantSymbol;
 
-    const bias = useMemo(() => {
-        if (!quantSnapshot?.sigmaGrid) return null;
-        return computeDirectionalBias(quantSnapshot.sigmaGrid);
-    }, [quantSnapshot?.sigmaGrid]);
+    const data = useMemo(() => {
+        if (!quantSnapshot) return null;
+        const meta = safe.obj(quantSnapshot.meta);
+        const sigmaGrid = safe.arr(quantSnapshot.sigmaGrid);
+        const quantiles = safe.obj(quantSnapshot.quantiles);
+        const macroBreakdown = safe.arr(quantSnapshot.macroBreakdown);
+        const bias = computeDirectionalBias(sigmaGrid);
 
-    if (!quantSnapshot) {
-        return (
-            <div className="panel-section" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ padding: '32px', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div className="loading-spinner" style={{
-                        width: '24px',
-                        height: '24px',
-                        border: '2px solid rgba(0,255,200,0.1)',
-                        borderTop: '2px solid var(--accent)',
-                        borderRadius: '50%',
-                        margin: '0 auto',
-                        animation: 'spin 1s linear infinite'
-                    }} />
-                    <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 700, letterSpacing: '2px' }}>
-                        INITIALIZING MACRO ENGINE...
-                    </span>
-                    <style>{`
-                        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                    `}</style>
-                </div>
-            </div>
-        );
+        return { meta, sigmaGrid, quantiles, macroBreakdown, bias };
+    }, [quantSnapshot]);
+
+    // ── 2. EARLY RETURN AFTER HOOKS ──
+    if (!quantSnapshot || !data) {
+        return <PanelSkeleton label="MACRO QUANT ENGINE" />;
     }
 
-    const { meta, sigmaGrid, quantiles, macroBreakdown } = quantSnapshot;
+    const { meta, sigmaGrid, quantiles, macroBreakdown, bias } = data;
     const isBull = bias?.direction === 'BULLISH';
     const biasColor = isBull ? 'var(--positive)' : 'var(--negative)';
     const arrowIcon = isBull ? '▲' : '▼';
 
+    // ── 3. RENDER ──
     return (
         <>
             <div className="panel-section">
@@ -223,13 +194,9 @@ export function QuantPanel() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {isLocked && (
                             <span style={{
-                                fontSize: '9px',
-                                color: 'var(--accent)',
-                                fontWeight: 700,
-                                background: 'rgba(0,255,200,0.08)',
-                                padding: '2px 6px',
-                                borderRadius: '3px',
-                                border: '1px solid rgba(0,255,200,0.15)',
+                                fontSize: '9px', color: 'var(--accent)', fontWeight: 700,
+                                background: 'rgba(0,255,200,0.08)', padding: '2px 6px',
+                                borderRadius: '3px', border: '1px solid rgba(0,255,200,0.15)',
                                 letterSpacing: '0.5px'
                             }}>
                                 🔒 {lockedQuantSymbol}
@@ -237,20 +204,12 @@ export function QuantPanel() {
                         )}
                         <button
                             onClick={toggleLock}
-                            title={isLocked ? `Unlock (currently locked to ${lockedQuantSymbol})` : 'Lock analysis to current symbol'}
+                            className="lock-btn"
                             style={{
                                 background: isLocked ? 'rgba(0,255,200,0.12)' : 'transparent',
                                 border: `1px solid ${isLocked ? 'var(--accent)' : 'var(--border-medium)'}`,
-                                borderRadius: '4px',
-                                color: isLocked ? 'var(--accent)' : 'var(--text-muted)',
-                                cursor: 'pointer',
-                                padding: '2px 6px',
-                                fontSize: '10px',
-                                fontWeight: 700,
-                                transition: 'all 0.2s',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '3px'
+                                borderRadius: '4px', color: isLocked ? 'var(--accent)' : 'var(--text-muted)',
+                                cursor: 'pointer', padding: '2px 6px', fontSize: '10px', fontWeight: 700,
                             }}
                         >
                             {isLocked ? '🔓' : '🔒'}
@@ -262,13 +221,13 @@ export function QuantPanel() {
                     <div style={{ display: 'flex', gap: '12px' }}>
                         <div className="stat-card" style={{ flex: 1 }}>
                             <div className="stat-label">DRIFT (1D)</div>
-                            <div className={`stat-value ${(meta?.adjustedDrift ?? 0) > 0 ? 'pos' : (meta?.adjustedDrift ?? 0) < 0 ? 'neg' : ''}`}>
-                                {(meta?.adjustedDrift ?? 0) > 0 ? '+' : ''}{(meta?.adjustedDrift ?? 0).toFixed(3)}%
+                            <div className={`stat-value ${safe.num(meta.adjustedDrift) > 0 ? 'pos' : safe.num(meta.adjustedDrift) < 0 ? 'neg' : ''}`}>
+                                {fmt.pct(safe.num(meta.adjustedDrift), '0.00%')}
                             </div>
                         </div>
                         <div className="stat-card" style={{ flex: 1 }}>
                             <div className="stat-label">VOLATILITY</div>
-                            <div className="stat-value">{(meta?.stepVolatility ?? 0).toFixed(3)}%</div>
+                            <div className="stat-value">{fmt.pct(safe.num(meta.stepVolatility), '0.00%')}</div>
                         </div>
                     </div>
                 </div>
@@ -287,14 +246,14 @@ export function QuantPanel() {
                             </tr>
                         </thead>
                         <tbody>
-                            {macroBreakdown?.map((m: any) => (
+                            {macroBreakdown.map((m: any) => (
                                 <tr key={m.ticker} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                                     <td style={{ padding: '4px 8px', fontWeight: 'bold' }}>{m.ticker}</td>
-                                    <td style={{ textAlign: 'right', padding: '4px 8px', color: m.correlation > 0 ? 'var(--positive)' : 'var(--negative)' }}>
-                                        {m.correlation > 0 ? '+' : ''}{m.correlation.toFixed(2)}
+                                    <td style={{ textAlign: 'right', padding: '4px 8px', color: safe.num(m.correlation) > 0 ? 'var(--positive)' : 'var(--negative)' }}>
+                                        {fmt.num(m.correlation, 2)}
                                     </td>
-                                    <td style={{ textAlign: 'right', padding: '4px 8px', color: m.zScore > 0 ? 'var(--positive)' : 'var(--negative)' }}>
-                                        {m.zScore > 0 ? '+' : ''}{m.zScore.toFixed(2)}
+                                    <td style={{ textAlign: 'right', padding: '4px 8px', color: safe.num(m.zScore) > 0 ? 'var(--positive)' : 'var(--negative)' }}>
+                                        {fmt.num(m.zScore, 2)}
                                     </td>
                                 </tr>
                             ))}
@@ -305,17 +264,17 @@ export function QuantPanel() {
 
             {/* QUANTILES */}
             <div className="panel-section">
-                <div className="p-head"><span>QUANTILES ({meta?.horizon}D)</span></div>
+                <div className="p-head"><span>QUANTILES ({safe.num(meta.horizon, 14)}D)</span></div>
                 <div className="p-body">
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        {quantiles && Object.entries(quantiles).map(([key, val]: [string, any]) => {
+                        {Object.entries(quantiles).map(([key, val]: [string, any]) => {
                             const label = key === 'p5' ? 'P05' : key === 'p25' ? 'P25' : key === 'p50' ? 'MED' : key === 'p75' ? 'P75' : 'P95';
                             return (
                                 <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-raised)', padding: '4px 8px', borderRadius: '4px' }}>
                                     <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>{label}</span>
-                                    <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace' }}>${val.price?.toLocaleString()}</span>
-                                    <span style={{ fontSize: '10px', color: (val.pctMove ?? 0) >= 0 ? 'var(--positive)' : 'var(--negative)', fontFamily: 'JetBrains Mono, monospace' }}>
-                                        {(val.pctMove ?? 0) >= 0 ? '+' : ''}{(val.pctMove ?? 0).toFixed(1)}%
+                                    <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace' }}>{fmt.price(val.price)}</span>
+                                    <span style={{ fontSize: '10px', color: safe.num(val.pctMove) >= 0 ? 'var(--positive)' : 'var(--negative)', fontFamily: 'JetBrains Mono, monospace' }}>
+                                        {fmt.pct(val.pctMove)}
                                     </span>
                                 </div>
                             );
@@ -324,7 +283,7 @@ export function QuantPanel() {
                 </div>
             </div>
 
-            {/* SIGMA DISTRIBUTION — smoothed bell curve + next-day bias */}
+            {/* SIGMA DISTRIBUTION */}
             <div className="panel-section">
                 <div className="p-head">
                     <span>SIGMA DISTRIBUTION</span>
@@ -335,20 +294,12 @@ export function QuantPanel() {
                     )}
                 </div>
                 <div className="p-body" style={{ paddingBottom: '4px' }}>
-
-                    {/* Smooth bell curve */}
                     <BellCurveChart sigmaGrid={sigmaGrid} />
 
-                    {/* Next-day direction box */}
                     {bias && (
                         <div style={{
-                            marginTop: '8px',
-                            background: 'var(--bg-overlay)',
-                            borderRadius: '6px',
-                            padding: '8px 10px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
+                            marginTop: '8px', background: 'var(--bg-overlay)', borderRadius: '6px',
+                            padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '10px',
                             borderLeft: `3px solid ${biasColor}`,
                         }}>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '44px' }}>
@@ -361,18 +312,18 @@ export function QuantPanel() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>
                                     <span>NEXT DAY</span>
                                     <span style={{ fontFamily: 'JetBrains Mono, monospace', color: biasColor }}>
-                                        {(bias.expectedMove ?? 0) >= 0 ? '+' : ''}{(bias.expectedMove ?? 0).toFixed(2)}% EXP
+                                        {fmt.pct(bias.expectedMove)} EXP
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
-                                    <span style={{ width: '28px', fontSize: '9px', color: 'var(--positive)', textAlign: 'right' }}>{bias.bullPct.toFixed(0)}%</span>
+                                    <span style={{ width: '28px', fontSize: '9px', color: 'var(--positive)', textAlign: 'right' }}>{fmt.num(bias.bullPct, 0)}%</span>
                                     <div style={{ flex: 1, height: '5px', background: 'var(--bg-raised)', borderRadius: '2px', overflow: 'hidden' }}>
                                         <div style={{ width: `${bias.bullPct}%`, height: '100%', background: 'var(--positive)', borderRadius: '2px' }} />
                                     </div>
                                     <span style={{ width: '14px', fontSize: '9px', color: 'var(--text-muted)' }}>▲</span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ width: '28px', fontSize: '9px', color: 'var(--negative)', textAlign: 'right' }}>{bias.bearPct.toFixed(0)}%</span>
+                                    <span style={{ width: '28px', fontSize: '9px', color: 'var(--negative)', textAlign: 'right' }}>{fmt.num(bias.bearPct, 0)}%</span>
                                     <div style={{ flex: 1, height: '5px', background: 'var(--bg-raised)', borderRadius: '2px', overflow: 'hidden' }}>
                                         <div style={{ width: `${bias.bearPct}%`, height: '100%', background: 'var(--negative)', borderRadius: '2px' }} />
                                     </div>
@@ -382,24 +333,21 @@ export function QuantPanel() {
                         </div>
                     )}
 
-                    {/* Price level reference rows */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '8px' }}>
-                        {sigmaGrid?.map((row: any) => (
+                        {sigmaGrid.map((row: any) => (
                             <div key={row.sigma} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ width: '28px', fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
-                                    {row.sigma > 0 ? '+' : ''}{row.sigma}σ
+                                    {safe.num(row.sigma) > 0 ? '+' : ''}{row.sigma}σ
                                 </span>
                                 <div style={{ flex: 1, height: '3px', background: 'var(--bg-overlay)', borderRadius: '2px', overflow: 'hidden' }}>
                                     <div style={{
-                                        width: `${Math.min(row.probability, 100)}%`,
-                                        height: '100%',
-                                        background: row.pctMove >= 0 ? 'var(--positive)' : 'var(--negative)',
-                                        opacity: 0.35,
-                                        borderRadius: '2px',
+                                        width: `${Math.min(safe.num(row.probability), 100)}%`, height: '100%',
+                                        background: safe.num(row.pctMove) >= 0 ? 'var(--positive)' : 'var(--negative)',
+                                        opacity: 0.35, borderRadius: '2px',
                                     }} />
                                 </div>
                                 <span style={{ width: '56px', textAlign: 'right', fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>
-                                    {formatPrice(row.price)}
+                                    {fmt.price(row.price)}
                                 </span>
                             </div>
                         ))}

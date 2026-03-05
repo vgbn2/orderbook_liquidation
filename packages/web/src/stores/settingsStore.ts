@@ -78,22 +78,37 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         safeSet('term_notif_level', v);
         set({ notificationLevel: v });
     },
-    currentView: 'chart',
-    setView: (v) => set({ currentView: v }),
-    exchangeView: 'binance',
-    setExchangeView: (ex) => set({ exchangeView: ex }),
+    currentView: (safeGet('term_current_view', 'chart') as any) || 'chart',
+    setView: (v) => {
+        safeSet('term_current_view', v);
+        set({ currentView: v });
+    },
+    exchangeView: (safeGet('term_exchange_view', 'binance') as any) || 'binance',
+    setExchangeView: (ex) => {
+        safeSet('term_exchange_view', ex);
+        set({ exchangeView: ex });
+    },
 
-    rightPanelWidth: parseInt(safeGet('term_right_w', '320')),
+    rightPanelWidth: (() => {
+        const val = parseInt(safeGet('term_right_w', '320'));
+        return isNaN(val) || val < 200 || val > 800 ? 320 : val;
+    })(),
     setRightPanelWidth: (valOrFn) => set(state => {
         const next = typeof valOrFn === 'function' ? valOrFn(state.rightPanelWidth) : valOrFn;
-        safeSet('term_right_w', String(next));
-        return { rightPanelWidth: next };
+        const validNext = isNaN(next) || next < 200 || next > 800 ? 320 : next;
+        safeSet('term_right_w', String(validNext));
+        return { rightPanelWidth: validNext };
     }),
-    orderbookHeight: parseInt(safeGet('term_orderbook_h', '320')),
+    orderbookHeight: (() => {
+        const val = parseInt(safeGet('term_orderbook_h', '320'));
+        return isNaN(val) || val < 100 || val > 1000 ? 320 : val;
+    })(),
     setOrderbookHeight: (valOrFn) => set(state => {
         const next = typeof valOrFn === 'function' ? valOrFn(state.orderbookHeight) : valOrFn;
-        safeSet('term_orderbook_h', String(next));
-        return { orderbookHeight: next };
+        const validNext = isNaN(next) || next < 100 || next > 1000 ? 320 : next;
+        safeSet('term_right_w', String(validNext)); // FIX: was using wrong key 'term_right_w' for height
+        safeSet('term_orderbook_h', String(validNext));
+        return { orderbookHeight: validNext };
     }),
     uiComplexity: safeGet('term_ui_complexity', 'Advanced') as 'Simple' | 'Advanced',
     setUiComplexity: (v) => {
