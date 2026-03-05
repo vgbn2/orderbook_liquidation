@@ -246,9 +246,14 @@ function runSingleBacktest(candles: CandleData[], config: BacktestConfig, initia
     }
 
     const compileCondition = (expr: string) => {
-        const vars = Object.keys(env);
-        const fnBody = `${vars.map(v => `const ${v} = env.${v}[i];`).join('\n')}\nreturn ${expr};`;
-        return new Function('env', 'i', fnBody);
+        try {
+            const vars = Object.keys(env);
+            const fnBody = `${vars.map(v => `const ${v} = env.${v}[i];`).join('\n')}\ntry { return ${expr}; } catch(e) { return false; }`;
+            return new Function('env', 'i', fnBody);
+        } catch (e) {
+            console.error('Failed to compile condition:', expr, e);
+            return () => false;
+        }
     };
 
     const buyFn = compileCondition(config.buyCondition);

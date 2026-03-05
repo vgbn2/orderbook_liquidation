@@ -202,6 +202,21 @@ export function useWebSocket() {
                 }
                 break;
             }
+            case 'quant.analytics': {
+                const parsed = msg.data as any;
+                const state = useMarketDataStore.getState();
+                // Ignore if locked to another symbol
+                const lockedSym = state.lockedQuantSymbol;
+                if (lockedSym && parsed.symbol !== lockedSym) return;
+
+                // If not locked, ensure it matches the active chart symbol
+                if (!lockedSym && parsed.symbol !== useCandleStore.getState().symbol) return;
+
+                if (!useMarketDataStore.getState().isReplayMode) {
+                    state.setQuantSnapshot(parsed);
+                }
+                break;
+            }
             default: {
                 if (isReplayMode) return;
 

@@ -157,9 +157,17 @@ function BellCurveChart({ sigmaGrid }: { sigmaGrid: any[] }) {
 // ── Main QuantPanel ──────────────────────────────────────────────────────────
 export function QuantPanel() {
     const quantSnapshot = useMarketDataStore((s) => s.quantSnapshot);
+    const setQuantSnapshot = useMarketDataStore((s) => s.setQuantSnapshot);
     const lockedQuantSymbol = useMarketDataStore((s) => s.lockedQuantSymbol);
     const setLockedQuantSymbol = useMarketDataStore((s) => s.setLockedQuantSymbol);
     const currentSymbol = useCandleStore((s) => s.symbol);
+
+    // ── 1. Clear stale data on mount/unmount/symbol change ────────────────────
+    useEffect(() => {
+        // Clear snapshot when entering a new symbol or unmounting
+        setQuantSnapshot(null);
+        return () => setQuantSnapshot(null);
+    }, [currentSymbol, setQuantSnapshot]);
 
     const toggleLock = useCallback(() => {
         if (lockedQuantSymbol) {
