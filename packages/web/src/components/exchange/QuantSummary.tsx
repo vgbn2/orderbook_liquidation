@@ -128,9 +128,9 @@ export function QuantSummary() {
                 overflow: 'hidden',
             }}>
                 {[
-                    { label: 'DRIFT 1D', value: `${meta.adjustedDrift > 0 ? '+' : ''}${meta.adjustedDrift?.toFixed(3)}%`, color: meta.adjustedDrift > 0 ? 'var(--positive)' : meta.adjustedDrift < 0 ? 'var(--negative)' : 'var(--text-primary)' },
-                    { label: 'VOL σ', value: `${meta.stepVolatility?.toFixed(3)}%`, color: 'var(--text-primary)' },
-                    { label: 'EXP MOVE', value: `${bias.expectedMove >= 0 ? '+' : ''}${bias.expectedMove.toFixed(2)}%`, color: biasColor },
+                    { label: 'DRIFT 1D', value: `${(meta?.adjustedDrift ?? 0) > 0 ? '+' : ''}${(meta?.adjustedDrift ?? 0).toFixed(3)}%`, color: (meta?.adjustedDrift ?? 0) > 0 ? 'var(--positive)' : (meta?.adjustedDrift ?? 0) < 0 ? 'var(--negative)' : 'var(--text-primary)' },
+                    { label: 'VOL σ', value: `${(meta?.stepVolatility ?? 0).toFixed(3)}%`, color: 'var(--text-primary)' },
+                    { label: 'EXP MOVE', value: `${(bias?.expectedMove ?? 0) >= 0 ? '+' : ''}${(bias?.expectedMove ?? 0).toFixed(2)}%`, color: biasColor },
                 ].map((stat) => (
                     <div key={stat.label} style={{ background: 'var(--bg-raised)', padding: '6px 8px', textAlign: 'center' }}>
                         <div style={{ fontSize: '8px', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px', marginBottom: '2px' }}>

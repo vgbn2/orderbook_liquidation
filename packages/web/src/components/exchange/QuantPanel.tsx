@@ -162,12 +162,12 @@ export function QuantPanel() {
     const setLockedQuantSymbol = useMarketDataStore((s) => s.setLockedQuantSymbol);
     const currentSymbol = useCandleStore((s) => s.symbol);
 
-    // ── 1. Clear stale data on mount/unmount/symbol change ────────────────────
+    // ── 1. Only clear snapshot if it belongs to a different symbol ──────────
     useEffect(() => {
-        // Clear snapshot when entering a new symbol or unmounting
-        setQuantSnapshot(null);
-        return () => setQuantSnapshot(null);
-    }, [currentSymbol, setQuantSnapshot]);
+        if (quantSnapshot && quantSnapshot.symbol !== currentSymbol) {
+            setQuantSnapshot(null);
+        }
+    }, [currentSymbol, quantSnapshot?.symbol, setQuantSnapshot]);
 
     const toggleLock = useCallback(() => {
         if (lockedQuantSymbol) {
@@ -262,13 +262,13 @@ export function QuantPanel() {
                     <div style={{ display: 'flex', gap: '12px' }}>
                         <div className="stat-card" style={{ flex: 1 }}>
                             <div className="stat-label">DRIFT (1D)</div>
-                            <div className={`stat-value ${meta?.adjustedDrift > 0 ? 'pos' : meta?.adjustedDrift < 0 ? 'neg' : ''}`}>
-                                {meta?.adjustedDrift > 0 ? '+' : ''}{meta?.adjustedDrift?.toFixed(3)}%
+                            <div className={`stat-value ${(meta?.adjustedDrift ?? 0) > 0 ? 'pos' : (meta?.adjustedDrift ?? 0) < 0 ? 'neg' : ''}`}>
+                                {(meta?.adjustedDrift ?? 0) > 0 ? '+' : ''}{(meta?.adjustedDrift ?? 0).toFixed(3)}%
                             </div>
                         </div>
                         <div className="stat-card" style={{ flex: 1 }}>
                             <div className="stat-label">VOLATILITY</div>
-                            <div className="stat-value">{meta?.stepVolatility?.toFixed(3)}%</div>
+                            <div className="stat-value">{(meta?.stepVolatility ?? 0).toFixed(3)}%</div>
                         </div>
                     </div>
                 </div>
@@ -314,8 +314,8 @@ export function QuantPanel() {
                                 <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-raised)', padding: '4px 8px', borderRadius: '4px' }}>
                                     <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>{label}</span>
                                     <span style={{ fontSize: '12px', fontFamily: 'JetBrains Mono, monospace' }}>${val.price?.toLocaleString()}</span>
-                                    <span style={{ fontSize: '10px', color: val.pctMove >= 0 ? 'var(--positive)' : 'var(--negative)', fontFamily: 'JetBrains Mono, monospace' }}>
-                                        {val.pctMove >= 0 ? '+' : ''}{val.pctMove?.toFixed(1)}%
+                                    <span style={{ fontSize: '10px', color: (val.pctMove ?? 0) >= 0 ? 'var(--positive)' : 'var(--negative)', fontFamily: 'JetBrains Mono, monospace' }}>
+                                        {(val.pctMove ?? 0) >= 0 ? '+' : ''}{(val.pctMove ?? 0).toFixed(1)}%
                                     </span>
                                 </div>
                             );
@@ -361,7 +361,7 @@ export function QuantPanel() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>
                                     <span>NEXT DAY</span>
                                     <span style={{ fontFamily: 'JetBrains Mono, monospace', color: biasColor }}>
-                                        {bias.expectedMove >= 0 ? '+' : ''}{bias.expectedMove.toFixed(2)}% EXP
+                                        {(bias.expectedMove ?? 0) >= 0 ? '+' : ''}{(bias.expectedMove ?? 0).toFixed(2)}% EXP
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>

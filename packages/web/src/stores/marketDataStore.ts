@@ -186,8 +186,9 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
 
     quantSnapshot: null,
     setQuantSnapshot: (s) => {
-        // If QuantPanel is locked, ignore incoming updates
-        if (get().lockedQuantSymbol) return;
+        const locked = get().lockedQuantSymbol;
+        // If locked, only accept updates for the locked symbol
+        if (locked && s && s.symbol !== locked) return;
         set({ quantSnapshot: s });
     },
 
