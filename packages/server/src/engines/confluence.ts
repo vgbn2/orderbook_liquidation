@@ -1,6 +1,7 @@
 import { logger } from '../logger.js';
 import { clientHub } from '../ws/client-hub.js';
 import { redis } from '../db/redis.js';
+import { query } from '../db/timescale.js';
 import type {
     ConfluenceZone,
     ConfluenceReason,
@@ -246,7 +247,19 @@ export class ConfluenceEngine {
             const zones = this.compute();
             if (zones.length === 0) return;
 
+            // Cache in Redis
             redis.set('confluence', JSON.stringify(zones), 'EX', 30).catch(() => { });
+
+            // Persist top 10 zones to TimescaleDB
+            const now = new Date();
+            for (const z of zones.slice(0, 10)) {
+                query(
+                    `INSERT INTO confluence_zones (time, symbol, price, score, signals, timeframe)
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [now, 'BTCUSDT', z.center, z.score, JSON.stringify(z.reasons), '1m']
+                ).catch(e => logger.error('Confluence DB Insert Error', e));
+            }
+
             clientHub.broadcast('confluence', zones);
         }, BROADCAST_INTERVAL);
     }

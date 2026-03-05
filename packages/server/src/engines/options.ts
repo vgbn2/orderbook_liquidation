@@ -1,5 +1,6 @@
 import { logger } from '../logger.js';
 import { clientHub } from '../ws/client-hub.js';
+import { query } from '../db/timescale.js';
 import type { OptionsAnalytics, GEXData, Exchange } from '../adapters/types.js';
 
 // ══════════════════════════════════════════════════════════════
@@ -146,6 +147,18 @@ export class OptionsEngine {
         this.broadcastTimer = setInterval(() => {
             const analytics = this.compute();
             if (!analytics) return;
+
+            // Persist to TimescaleDB
+            const now = new Date();
+            for (const [strikeStr, data] of Object.entries(analytics.oi_by_strike)) {
+                const strike = parseFloat(strikeStr);
+                const gex = analytics.gex_by_strike[strike] || 0;
+                query(
+                    `INSERT INTO options_snapshots (time, symbol, strike, expiry, call_oi, put_oi, gex)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [now, 'BTCUSDT', strike, analytics.expiry, data.call_oi, data.put_oi, gex]
+                ).catch(e => logger.error('Options DB Insert Error', e));
+            }
 
             clientHub.broadcast('options.analytics' as any, analytics);
         }, BROADCAST_INTERVAL);

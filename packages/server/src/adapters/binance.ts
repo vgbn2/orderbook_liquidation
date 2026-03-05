@@ -491,7 +491,10 @@ export class BinanceAdapter implements ExchangeAdapter {
                         this.tradeBatch.push(trade);
 
                         // Fix 2: Queue Database Inserts to prevent Connection Pool exhaustion
-                        tradeBatcher.add(trade);
+                        const MIN_TRADE_USD = 100_000;
+                        if (trade.price * trade.qty >= MIN_TRADE_USD) {
+                            tradeBatcher.add(trade);
+                        }
 
                         // Feed into Aggregated Candle Engine (VWAP)
                         aggregatedCandleEngine.ingestTrade('binance', trade.symbol, trade.price, trade.qty, trade.time);

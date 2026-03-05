@@ -1,6 +1,7 @@
 import { logger } from '../logger.js';
 import { clientHub } from '../ws/client-hub.js';
 import { redis } from '../db/redis.js';
+import { query } from '../db/timescale.js';
 import type { VWAFData, FundingSnapshot, Exchange } from '../adapters/types.js';
 
 // ══════════════════════════════════════════════════════════════
@@ -83,6 +84,13 @@ export class VWAFEngine {
 
             // Cache in Redis
             redis.set('vwaf', JSON.stringify(data), 'EX', 30).catch(() => { });
+
+            // Persist to TimescaleDB
+            query(
+                `INSERT INTO funding_snapshots (time, symbol, vwaf, vwaf_annualized, vwaf_8h_pct, total_oi_usd, divergence, sentiment)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                [new Date(), 'BTCUSDT', data.vwaf, data.vwaf_annualized, data.vwaf_8h_pct, data.total_oi_usd, data.divergence, data.sentiment]
+            ).catch(e => logger.error('VWAF DB Insert Error', e));
 
             clientHub.broadcast('vwaf', data);
         }, BROADCAST_INTERVAL);

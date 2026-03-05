@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/clerk-react";
 import { useCandleStore } from "../../stores/candleStore";
 import { useMarketDataStore } from "../../stores/marketDataStore";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -757,6 +758,23 @@ export function TerminusNav() {
 
                 {/* Right side controls */}
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16, paddingRight: 16 }}>
+
+                    {/* Authentication */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <SignedOut>
+                            <SignInButton mode="modal">
+                                <button className="btn btn-outline" style={{ fontSize: 12, padding: "4px 12px", border: "1px solid var(--border-medium)", background: "transparent", color: "var(--text-primary)", borderRadius: "var(--r-md)", cursor: "pointer" }}>Sign In</button>
+                            </SignInButton>
+                            <SignUpButton mode="modal">
+                                <button className="btn btn-primary" style={{ fontSize: 12, padding: "4px 12px", background: "var(--accent)", color: "#000", border: "none", borderRadius: "var(--r-md)", cursor: "pointer" }}>Sign Up</button>
+                            </SignUpButton>
+                        </SignedOut>
+                        <SignedIn>
+                            <UserButton appearance={{ elements: { userButtonAvatarBox: { width: 28, height: 28 } } }} />
+                        </SignedIn>
+                    </div>
+
+                    <div className="divider" style={{ width: 1, height: 20, background: "var(--border-medium)" }} />
 
                     {/* Top right icons */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
