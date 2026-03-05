@@ -114,6 +114,30 @@ function WhaleFeed() {
 export function LiquidationPanel() {
     const liqData = useMarketDataStore((s) => s.liquidations);
 
+    // ── Sentiment Gauge (Long vs Short) ─────────────────────────────────────
+    const { longLiqTotal, shortLiqTotal, longPct, shortPct, sentimentLabel, sentimentColor } = useMemo(() => {
+        const heatmap = liqData?.heatmap || [];
+        const longs = heatmap.reduce((s: number, b: any) => s + (b.long_liq_usd ?? b.total * 0.5), 0);
+        const shorts = heatmap.reduce((s: number, b: any) => s + (b.short_liq_usd ?? b.total * 0.5), 0);
+        const total = longs + shorts || 1;
+        const lPct = (longs / total) * 100;
+        const sPct = (shorts / total) * 100;
+        const label = lPct > 70 ? 'LONG FLUSH' : sPct > 70 ? 'SHORT SQUEEZE' : 'BALANCED';
+        const color = lPct > 70 ? 'var(--color-negative)' : sPct > 70 ? 'var(--color-positive)' : 'var(--color-text-muted)';
+        return { longLiqTotal: longs, shortLiqTotal: shorts, longPct: lPct, shortPct: sPct, sentimentLabel: label, sentimentColor: color };
+    }, [liqData?.heatmap]);
+
+    // ── Heatmap with Heat Gradient + Top 3 Labels ───────────────────────────
+    const { maxTotal, top3Prices, minPrice, maxPrice } = useMemo(() => {
+        const heatmap = liqData?.heatmap || [];
+        const max = Math.max(...heatmap.map((b: { total: number }) => b.total), 1);
+        const sorted = [...heatmap].sort((a: any, b: any) => b.total - a.total);
+        const top3 = new Set(sorted.slice(0, 3).map((b: any) => b.price));
+        const minP = heatmap.length > 0 ? heatmap[0].price : 0;
+        const maxP = heatmap.length > 0 ? heatmap[heatmap.length - 1].price : 0;
+        return { maxTotal: max, top3Prices: top3, minPrice: minP, maxPrice: maxP };
+    }, [liqData?.heatmap]);
+
     if (!liqData) {
         return (
             <PanelSection title="LIQUIDATION HQ" isCollapsible defaultCollapsed={false}>
@@ -125,28 +149,6 @@ export function LiquidationPanel() {
     }
 
     const { heatmap, total_usd, event_count } = liqData;
-
-    // ── Sentiment Gauge (Long vs Short) ─────────────────────────────────────
-    const { longLiqTotal, shortLiqTotal, longPct, shortPct, sentimentLabel, sentimentColor } = useMemo(() => {
-        const longs = heatmap.reduce((s: number, b: any) => s + (b.long_liq_usd ?? b.total * 0.5), 0);
-        const shorts = heatmap.reduce((s: number, b: any) => s + (b.short_liq_usd ?? b.total * 0.5), 0);
-        const total = longs + shorts || 1;
-        const lPct = (longs / total) * 100;
-        const sPct = (shorts / total) * 100;
-        const label = lPct > 70 ? 'LONG FLUSH' : sPct > 70 ? 'SHORT SQUEEZE' : 'BALANCED';
-        const color = lPct > 70 ? 'var(--color-negative)' : sPct > 70 ? 'var(--color-positive)' : 'var(--color-text-muted)';
-        return { longLiqTotal: longs, shortLiqTotal: shorts, longPct: lPct, shortPct: sPct, sentimentLabel: label, sentimentColor: color };
-    }, [heatmap]);
-
-    // ── Heatmap with Heat Gradient + Top 3 Labels ───────────────────────────
-    const { maxTotal, top3Prices, minPrice, maxPrice } = useMemo(() => {
-        const max = Math.max(...heatmap.map((b: { total: number }) => b.total), 1);
-        const sorted = [...heatmap].sort((a: any, b: any) => b.total - a.total);
-        const top3 = new Set(sorted.slice(0, 3).map((b: any) => b.price));
-        const minP = heatmap.length > 0 ? heatmap[0].price : 0;
-        const maxP = heatmap.length > 0 ? heatmap[heatmap.length - 1].price : 0;
-        return { maxTotal: max, top3Prices: top3, minPrice: minP, maxPrice: maxP };
-    }, [heatmap]);
 
     return (
         <PanelSection title="LIQUIDATION HQ" isCollapsible defaultCollapsed={false}>
