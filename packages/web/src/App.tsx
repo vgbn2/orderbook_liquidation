@@ -12,6 +12,7 @@ import { useLayoutResizer } from './hooks/useLayoutResizer';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAppEvents } from './hooks/useAppEvents';
 import { QuantPanel } from './components/exchange/QuantPanel.tsx';
+import { QuantSummary } from './components/exchange/QuantSummary.tsx';
 import { Toolbar } from './components/chart/Toolbar.tsx';
 import { ToastContainer, NotifMutedBadge } from './components/shared/Toast.tsx';
 import { Orderbook } from './components/exchange/Orderbook.tsx';
@@ -39,7 +40,7 @@ export function App() {
     const [loading, setLoading] = useState(true);
     const candles = useCandleStore(s => s.candles);
     const timezone = 7; // UTC+7 default
-    const [sidebarTab, setSidebarTab] = useState<'macro' | 'options'>('macro');
+    const [sidebarTab, setSidebarTab] = useState<'macro' | 'options' | 'analytics'>('macro');
     const [showBacktestPanel, setShowBacktestPanel] = useState(false);
     const [showReplayPanel, setShowReplayPanel] = useState(false);
     const [showAlertPanel, setShowAlertPanel] = useState(false);
@@ -54,6 +55,13 @@ export function App() {
         const handler = () => setShowReplayPanel(true);
         window.addEventListener('TERMINUS_SHOW_REPLAY', handler);
         return () => window.removeEventListener('TERMINUS_SHOW_REPLAY', handler);
+    }, []);
+
+    // Listen for QuantSummary "Open Analytics" button
+    useEffect(() => {
+        const handler = () => setSidebarTab('analytics');
+        window.addEventListener('TERMINUS_OPEN_ANALYTICS', handler);
+        return () => window.removeEventListener('TERMINUS_OPEN_ANALYTICS', handler);
     }, []);
 
     const exchangeView = useSettingsStore(s => s.exchangeView);
@@ -285,39 +293,51 @@ export function App() {
                         )}
 
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            {/* ── QuantSummary — Always Visible ── */}
+                            <ErrorBoundary name="QuantSummary"><QuantSummary /></ErrorBoundary>
+
                             {uiComplexity === 'Advanced' ? (
                                 <>
                                     <div style={{ display: 'flex', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
-                                        <div
-                                            onClick={() => setSidebarTab('macro')}
-                                            style={{ flex: 1, padding: '12px', textAlign: 'center', fontSize: '11px', fontWeight: sidebarTab === 'macro' ? 700 : 500, color: sidebarTab === 'macro' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: sidebarTab === 'macro' ? '2px solid var(--accent)' : 'none', cursor: 'pointer' }}
-                                        >
-                                            MACRO · QUANT
-                                        </div>
-                                        <div
-                                            onClick={() => setSidebarTab('options')}
-                                            style={{ flex: 1, padding: '12px', textAlign: 'center', fontSize: '11px', fontWeight: sidebarTab === 'options' ? 700 : 500, color: sidebarTab === 'options' ? 'var(--accent)' : 'var(--text-muted)', borderBottom: sidebarTab === 'options' ? '2px solid var(--accent)' : 'none', cursor: 'pointer' }}
-                                        >
-                                            OPTIONS · GEX
-                                        </div>
+                                        {(['macro', 'options', 'analytics'] as const).map((tab) => {
+                                            const labels = { macro: 'MACRO · QUANT', options: 'OPTIONS · GEX', analytics: 'ANALYTICS' };
+                                            return (
+                                                <div
+                                                    key={tab}
+                                                    onClick={() => setSidebarTab(tab)}
+                                                    style={{
+                                                        flex: 1, padding: '10px 4px', textAlign: 'center',
+                                                        fontSize: '10px', fontWeight: sidebarTab === tab ? 700 : 500,
+                                                        color: sidebarTab === tab ? 'var(--accent)' : 'var(--text-muted)',
+                                                        borderBottom: sidebarTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
+                                                        cursor: 'pointer', transition: 'all 0.15s',
+                                                        letterSpacing: '0.3px',
+                                                    }}
+                                                >
+                                                    {labels[tab]}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
 
-                                    {sidebarTab === 'macro' ? (
+                                    {sidebarTab === 'macro' && (
                                         <>
                                             <ErrorBoundary name="HTFBiasMonitor"><HTFBiasMonitor /></ErrorBoundary>
-                                            <ErrorBoundary name="QuantPanel"><QuantPanel /></ErrorBoundary>
                                             <ErrorBoundary name="LiquidationPanel"><LiquidationPanel /></ErrorBoundary>
                                             <ErrorBoundary name="VWAFPanel"><VWAFPanel /></ErrorBoundary>
                                             <ErrorBoundary name="ConfluencePanel"><ConfluencePanel /></ErrorBoundary>
                                         </>
-                                    ) : (
+                                    )}
+                                    {sidebarTab === 'options' && (
                                         <ErrorBoundary name="OptionsPanel"><OptionsPanel /></ErrorBoundary>
+                                    )}
+                                    {sidebarTab === 'analytics' && (
+                                        <ErrorBoundary name="QuantPanel"><QuantPanel /></ErrorBoundary>
                                     )}
                                 </>
                             ) : (
                                 <>
-                                    {/* Simple Mode: Only core panels */}
-                                    <ErrorBoundary name="QuantPanel"><QuantPanel /></ErrorBoundary>
+                                    {/* Simple Mode: Only core summary */}
                                     <div style={{ padding: '12px', fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', borderTop: '1px solid var(--border-medium)' }}>
                                         ADVANCED PANELS HIDDEN (SIMPLE MODE)
                                     </div>

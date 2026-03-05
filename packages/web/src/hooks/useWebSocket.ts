@@ -276,6 +276,7 @@ export function useWebSocket() {
                         break;
                     case 'liquidations':
                         addLiquidation(msg.data as any);
+                        useMarketDataStore.getState().addSignificantLiquidation(msg.data as any);
                         break;
                     case 'liquidations.heatmap':
                         pendingLiquidations.current = msg.data;

@@ -14,6 +14,8 @@ import {
 } from '../types';
 import { LiqCluster, liqClusterEngine, LiqEvent } from '../engines/liqCluster';
 
+export type { LiqEvent };
+
 interface MarketDataState {
     // Connection
     connected: boolean;
@@ -35,6 +37,8 @@ interface MarketDataState {
     setLiquidations: (d: LiquidationHeatmapData | null) => void;
     liqClusters: (LiqCluster & { ageFactor: number })[];
     addLiquidation: (event: LiqEvent) => void;
+    significantLiquidations: LiqEvent[];
+    addSignificantLiquidation: (event: LiqEvent) => void;
 
     // Trades
     trades: TradeData[];
@@ -129,6 +133,13 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
     addLiquidation: (event) => {
         liqClusterEngine.process(event);
         set({ liqClusters: liqClusterEngine.getVisible(Date.now()) });
+    },
+    significantLiquidations: [],
+    addSignificantLiquidation: (event) => {
+        if (event.size < 10_000) return; // Ignore sub-$10K events
+        set((s) => ({
+            significantLiquidations: [event, ...s.significantLiquidations].slice(0, 50),
+        }));
     },
 
     trades: [],
