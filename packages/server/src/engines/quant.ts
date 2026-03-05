@@ -2,7 +2,9 @@ import { logger } from '../logger.js';
 import { redis } from '../db/redis.js';
 import { clientHub } from '../ws/client-hub.js';
 import { binanceAdapter } from '../adapters/binance.js';
-import yahooFinance from 'yahoo-finance2';
+import YahooFinance from 'yahoo-finance2';
+const yf = new YahooFinance();
+
 import { computeQuantAnalytics, MacroPrices } from './quantMath.js';
 
 const INTERVAL = 30 * 60 * 1000; // 30 minutes
@@ -173,8 +175,9 @@ class QuantEngine {
                 // To avoid rate limits, small delay
                 if (idx > 0) await new Promise(r => setTimeout(r, 200));
 
-                const data = await yahooFinance.historical(ticker, {
+                const data = await yf.historical(ticker, {
                     period1: period1Str,
+                    period2: now.toISOString().split('T')[0],
                     interval: '1d'
                 }) as Array<{ close: number }>;
 

@@ -69,13 +69,13 @@ class ReplayEngine {
                     data.splice(5000);
                 }
 
-                if (data.length > 0) {
-                    clientHub.sendToClient(clientId, 'replay' as any, {
-                        type: 'BATCH',
-                        timestamp: current.currentTime,
-                        events: data
-                    });
-                }
+                // Always send BATCH to keep frontend scrubber synchronized, even if no data
+                clientHub.sendToClient(clientId, 'replay' as any, {
+                    type: 'BATCH',
+                    timestamp: current.currentTime,
+                    events: data
+                });
+
                 current.currentTime = nextTime;
             } catch (err) {
                 logger.error({ err }, 'Replay fetch error');
