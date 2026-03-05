@@ -125,6 +125,14 @@ const NAV_ITEMS = [
         dropdown: {
             sections: [
                 {
+                    title: "Analysis Panels",
+                    items: [
+                        { icon: "◈", label: "Macro Quant", desc: "Sigma distributions, regime, drift", badge: null },
+                        { icon: "▦", label: "Liquidation", desc: "Clusters, confluence zones, imbalance", badge: null },
+                        { icon: "⟁", label: "Options · GEX", desc: "Max pain, gamma exposure, OI", badge: null },
+                    ],
+                },
+                {
                     title: "Utilities",
                     items: [
                         { icon: "⊗", label: "Market Switcher", desc: "All crypto perps, hotkey switch", badge: null },
@@ -271,6 +279,12 @@ function Dropdown({ item }: { item: any }) {
                                     window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'liq_clusters' } }));
                                 } else if (it.label === 'Resting Liq') {
                                     window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'resting_liq' } }));
+                                } else if (it.label === 'Macro Quant') {
+                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_QUANT'));
+                                } else if (it.label === 'Liquidation') {
+                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_LIQUIDATION'));
+                                } else if (it.label === 'Options · GEX') {
+                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_OPTIONS'));
                                 } else if (['Backtest', 'Paper Trade', 'Optimize', 'Equity Curve', 'Trade Log', 'Drawdown', 'Heatmap'].includes(it.label)) {
                                     setView('backtest');
                                 } else if (it.label !== "Settings") {

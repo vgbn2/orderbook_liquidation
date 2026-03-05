@@ -4,23 +4,21 @@ import { useMarketDataStore } from './stores/marketDataStore';
 import { Chart, IndicatorKey, DrawingTool } from './components/chart/Chart.tsx';
 import { TerminusNav } from './components/shared/TerminusNav.tsx';
 import { ErrorBoundary } from './components/shared/ErrorBoundary.tsx';
-import { OptionsPanel } from './components/exchange/OptionsPanel.tsx';
-import { LiquidationPanel } from './components/exchange/LiquidationPanel.tsx';
-import { VWAFPanel } from './components/exchange/VWAFPanel.tsx';
-import { ConfluencePanel } from './components/exchange/ConfluencePanel.tsx';
 import { useLayoutResizer } from './hooks/useLayoutResizer';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAppEvents } from './hooks/useAppEvents';
-import { QuantPanel } from './components/exchange/QuantPanel.tsx';
 import { QuantSummary } from './components/exchange/QuantSummary.tsx';
+import { TerminalSummaryPanel } from './components/exchange/TerminalSummaryPanel.tsx';
 import { Toolbar } from './components/chart/Toolbar.tsx';
 import { ToastContainer, NotifMutedBadge } from './components/shared/Toast.tsx';
 import { Orderbook } from './components/exchange/Orderbook.tsx';
-import { HTFBiasMonitor } from './components/chart/HTFBiasMonitor.tsx';
 import { useSettingsStore } from './stores/settingsStore';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useDrawings } from './components/chart/hooks/useDrawings.ts';
 import { FloatingReplayPanel } from './components/exchange/FloatingReplayPanel.tsx';
+import { FloatingQuantPanel } from './components/exchange/FloatingQuantPanel.tsx';
+import { FloatingLiquidationPanel } from './components/exchange/FloatingLiquidationPanel.tsx';
+import { FloatingOptionsPanel } from './components/exchange/FloatingOptionsPanel.tsx';
 
 const FloatingBacktestPanel = lazy(() => import('./components/backtest/FloatingBacktestPanel.tsx').then(m => ({ default: m.FloatingBacktestPanel })));
 const AlertManager = lazy(() => import('./components/shared/AlertManager.tsx').then(m => ({ default: m.AlertManager })));
@@ -40,28 +38,37 @@ export function App() {
     const [loading, setLoading] = useState(true);
     const candles = useCandleStore(s => s.candles);
     const timezone = 7; // UTC+7 default
-    const [sidebarTab, setSidebarTab] = useState<'macro' | 'options' | 'analytics'>('macro');
     const [showBacktestPanel, setShowBacktestPanel] = useState(false);
     const [showReplayPanel, setShowReplayPanel] = useState(false);
     const [showAlertPanel, setShowAlertPanel] = useState(false);
+    const [showQuantPanel, setShowQuantPanel] = useState(false);
+    const [showLiquidationPanel, setShowLiquidationPanel] = useState(false);
+    const [showOptionsPanel, setShowOptionsPanel] = useState(false);
 
     const uiComplexity = useSettingsStore(s => s.uiComplexity);
     const showOrderbook = useSettingsStore(s => s.showOrderbook);
     const currentView = useSettingsStore(s => s.currentView);
     const setView = useSettingsStore(s => s.setView);
 
-    // Replay panel listener
+    // Floating panel listeners
     useEffect(() => {
-        const handler = () => setShowReplayPanel(true);
-        window.addEventListener('TERMINUS_SHOW_REPLAY', handler);
-        return () => window.removeEventListener('TERMINUS_SHOW_REPLAY', handler);
-    }, []);
-
-    // Listen for QuantSummary "Open Analytics" button
-    useEffect(() => {
-        const handler = () => setSidebarTab('analytics');
-        window.addEventListener('TERMINUS_OPEN_ANALYTICS', handler);
-        return () => window.removeEventListener('TERMINUS_OPEN_ANALYTICS', handler);
+        const showReplay = () => setShowReplayPanel(true);
+        const showQuant = () => setShowQuantPanel(true);
+        const showLiq = () => setShowLiquidationPanel(true);
+        const showOpts = () => setShowOptionsPanel(true);
+        const openAnalytics = () => setShowQuantPanel(true); // QuantSummary "Open Analytics" now opens the floating panel
+        window.addEventListener('TERMINUS_SHOW_REPLAY', showReplay);
+        window.addEventListener('TERMINUS_SHOW_QUANT', showQuant);
+        window.addEventListener('TERMINUS_SHOW_LIQUIDATION', showLiq);
+        window.addEventListener('TERMINUS_SHOW_OPTIONS', showOpts);
+        window.addEventListener('TERMINUS_OPEN_ANALYTICS', openAnalytics);
+        return () => {
+            window.removeEventListener('TERMINUS_SHOW_REPLAY', showReplay);
+            window.removeEventListener('TERMINUS_SHOW_QUANT', showQuant);
+            window.removeEventListener('TERMINUS_SHOW_LIQUIDATION', showLiq);
+            window.removeEventListener('TERMINUS_SHOW_OPTIONS', showOpts);
+            window.removeEventListener('TERMINUS_OPEN_ANALYTICS', openAnalytics);
+        };
     }, []);
 
     const exchangeView = useSettingsStore(s => s.exchangeView);
@@ -296,53 +303,10 @@ export function App() {
                             {/* ── QuantSummary — Always Visible ── */}
                             <ErrorBoundary name="QuantSummary"><QuantSummary /></ErrorBoundary>
 
-                            {uiComplexity === 'Advanced' ? (
-                                <>
-                                    <div style={{ display: 'flex', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
-                                        {(['macro', 'options', 'analytics'] as const).map((tab) => {
-                                            const labels = { macro: 'MACRO · QUANT', options: 'OPTIONS · GEX', analytics: 'ANALYTICS' };
-                                            return (
-                                                <div
-                                                    key={tab}
-                                                    onClick={() => setSidebarTab(tab)}
-                                                    style={{
-                                                        flex: 1, padding: '10px 4px', textAlign: 'center',
-                                                        fontSize: '10px', fontWeight: sidebarTab === tab ? 700 : 500,
-                                                        color: sidebarTab === tab ? 'var(--accent)' : 'var(--text-muted)',
-                                                        borderBottom: sidebarTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
-                                                        cursor: 'pointer', transition: 'all 0.15s',
-                                                        letterSpacing: '0.3px',
-                                                    }}
-                                                >
-                                                    {labels[tab]}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-
-                                    {sidebarTab === 'macro' && (
-                                        <>
-                                            <ErrorBoundary name="HTFBiasMonitor"><HTFBiasMonitor /></ErrorBoundary>
-                                            <ErrorBoundary name="LiquidationPanel"><LiquidationPanel /></ErrorBoundary>
-                                            <ErrorBoundary name="VWAFPanel"><VWAFPanel /></ErrorBoundary>
-                                            <ErrorBoundary name="ConfluencePanel"><ConfluencePanel /></ErrorBoundary>
-                                        </>
-                                    )}
-                                    {sidebarTab === 'options' && (
-                                        <ErrorBoundary name="OptionsPanel"><OptionsPanel /></ErrorBoundary>
-                                    )}
-                                    {sidebarTab === 'analytics' && (
-                                        <ErrorBoundary name="QuantPanel"><QuantPanel /></ErrorBoundary>
-                                    )}
-                                </>
-                            ) : (
-                                <>
-                                    {/* Simple Mode: Only core summary */}
-                                    <div style={{ padding: '12px', fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', borderTop: '1px solid var(--border-medium)' }}>
-                                        ADVANCED PANELS HIDDEN (SIMPLE MODE)
-                                    </div>
-                                </>
-                            )}
+                            {/* ── Terminal Summary Panel (replaces old tabs) ── */}
+                            <ErrorBoundary name="TerminalSummaryPanel">
+                                <TerminalSummaryPanel />
+                            </ErrorBoundary>
                         </div>
                     </aside>
                 </div>
@@ -391,6 +355,18 @@ export function App() {
                 <Suspense fallback={null}>
                     <AlertManager onClose={() => setShowAlertPanel(false)} />
                 </Suspense>
+            )}
+
+            {showQuantPanel && (
+                <FloatingQuantPanel onClose={() => setShowQuantPanel(false)} />
+            )}
+
+            {showLiquidationPanel && (
+                <FloatingLiquidationPanel onClose={() => setShowLiquidationPanel(false)} />
+            )}
+
+            {showOptionsPanel && (
+                <FloatingOptionsPanel onClose={() => setShowOptionsPanel(false)} />
             )}
 
             <ToastContainer />
