@@ -553,16 +553,9 @@ assuming new code caused a problem.
 
 ### DISPLAY
 ```
-[BUG-8] --space-* and --radius-sm CSS variables undefined
-  Resolves to 0px → panels have no internal padding/spacing
-  Fix: Add to index.css :root (see Section 6)
-
-[BUG-9] DepthCurveChart ask side has no gradient fill
-  File: ExchangePage.tsx
-  Cause: SVG defs has bidGrad + maskGrad but NOT askGrad
-  Effect: Ask side of depth chart shows outline only, no fill
-
-[BUG-10] TerminusNav ticker shows hardcoded stale prices on load
+[FIXED]    BUG-8   --space-* and --radius-sm now defined in theme.css
+[FIXED]    BUG-9   ExchangePage depth chart: askGrad missing from SVG defs → no fill on ask side
+[FIXED]    BUG-10  TerminusNav defaultMarkets has stale hardcoded prices before fstream connects on load
   File: TerminusNav.tsx (defaultMarkets object)
   Values: BTC='67,728.5', ETH='3,482.1', SOL='182.44' (from whenever written)
   Effect: Wrong prices shown until Binance fstream connects

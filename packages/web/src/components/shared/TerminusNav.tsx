@@ -8,16 +8,16 @@ import { showToast } from "./Toast.tsx";
 
 // ─── DATA ─────────────────────────────────────────────────────
 let defaultMarkets = [
-    { symbol: "BTCUSDT", price: "67,728.5", change: "-0.51%", neg: true, volume: 1000 },
-    { symbol: "ETHUSDT", price: "3,482.1", change: "+1.23%", neg: false, volume: 900 },
-    { symbol: "SOLUSDT", price: "182.44", change: "+2.87%", neg: false, volume: 800 },
-    { symbol: "XAUUSDT", price: "5,190.77", change: "-0.05%", neg: true, volume: 700 },
-    { symbol: "BNBUSDT", price: "612.30", change: "+0.44%", neg: false, volume: 600 },
-    { symbol: "POWERUSDT", price: "1.8810", change: "+80.87%", neg: false, volume: 500 },
-    { symbol: "APTUSDT", price: "0.999", change: "+4.50%", neg: false, volume: 400 },
-    { symbol: "XAGUSDT", price: "90.16", change: "+0.86%", neg: false, volume: 300 },
-    { symbol: "DOGEUSDT", price: "0.15", change: "-1.2%", neg: true, volume: 200 },
-    { symbol: "XRPUSDT", price: "0.58", change: "+0.1%", neg: false, volume: 100 },
+    { symbol: "BTCUSDT", price: "—", change: "—", neg: false, volume: 1000 },
+    { symbol: "ETHUSDT", price: "—", change: "—", neg: false, volume: 900 },
+    { symbol: "SOLUSDT", price: "—", change: "—", neg: false, volume: 800 },
+    { symbol: "XAUUSDT", price: "—", change: "—", neg: false, volume: 700 },
+    { symbol: "BNBUSDT", price: "—", change: "—", neg: false, volume: 600 },
+    { symbol: "POWERUSDT", price: "—", change: "—", neg: false, volume: 500 },
+    { symbol: "APTUSDT", price: "—", change: "—", neg: false, volume: 400 },
+    { symbol: "XAGUSDT", price: "—", change: "—", neg: false, volume: 300 },
+    { symbol: "DOGEUSDT", price: "—", change: "—", neg: false, volume: 200 },
+    { symbol: "XRPUSDT", price: "—", change: "—", neg: false, volume: 100 },
 ];
 
 const NAV_ITEMS = [

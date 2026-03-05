@@ -114,8 +114,8 @@ export function App() {
             if (data.length > 0) {
                 if (showAggregated) setAggregatedCandles(data);
                 else setCandles(data);
-                setLoading(false);
             }
+            setLoading(false);
         } catch (err) {
             console.error('Failed to fetch OHLCV:', err);
             // Retry after 3s
