@@ -157,6 +157,15 @@ export async function runMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_ob_symbol_time ON orderbook_snapshots (symbol, time DESC);
   `);
 
+  // ── Compression Setup ───────────────────────────
+  await query(`
+    ALTER TABLE big_trades SET (timescaledb.compress, timescaledb.compress_segmentby = 'symbol');
+    ALTER TABLE ohlcv_candles SET (timescaledb.compress, timescaledb.compress_segmentby = 'symbol');
+    ALTER TABLE orderbook_snapshots SET (timescaledb.compress, timescaledb.compress_segmentby = 'symbol');
+    ALTER TABLE liquidation_events SET (timescaledb.compress, timescaledb.compress_segmentby = 'symbol');
+    ALTER TABLE aggregated_candles SET (timescaledb.compress, timescaledb.compress_segmentby = 'symbol');
+  `);
+
   // ── Compression Policies ─────────────────────────
   await query(`
     SELECT add_compression_policy('big_trades', INTERVAL '7 days', if_not_exists => true);

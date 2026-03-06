@@ -7,23 +7,23 @@ import { ErrorBoundary } from './components/shared/ErrorBoundary.tsx';
 import { useLayoutResizer } from './hooks/useLayoutResizer';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAppEvents } from './hooks/useAppEvents';
-import { QuantSummary } from './components/exchange/QuantSummary.tsx';
-import { TerminalSummaryPanel } from './components/exchange/TerminalSummaryPanel.tsx';
+import { QuantSummary } from './components/exchange/panels/QuantSummary.tsx';
+import { TerminalSummaryPanel } from './components/exchange/panels/TerminalSummaryPanel.tsx';
 import { Toolbar } from './components/chart/Toolbar.tsx';
 import { ToastContainer, NotifMutedBadge } from './components/shared/Toast.tsx';
-import { Orderbook } from './components/exchange/Orderbook.tsx';
+import { Orderbook } from './components/exchange/panels/Orderbook.tsx';
 import { useSettingsStore } from './stores/settingsStore';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useDrawings } from './components/chart/hooks/useDrawings.ts';
-import { FloatingReplayPanel } from './components/exchange/FloatingReplayPanel.tsx';
-import { FloatingQuantPanel } from './components/exchange/FloatingQuantPanel.tsx';
-import { FloatingLiquidationPanel } from './components/exchange/FloatingLiquidationPanel.tsx';
-import { FloatingOptionsPanel } from './components/exchange/FloatingOptionsPanel.tsx';
+import { FloatingReplayPanel } from './components/exchange/floating/FloatingReplayPanel.tsx';
+import { FloatingQuantPanel } from './components/exchange/floating/FloatingQuantPanel.tsx';
+import { FloatingLiquidationPanel } from './components/exchange/floating/FloatingLiquidationPanel.tsx';
+import { FloatingOptionsPanel } from './components/exchange/floating/FloatingOptionsPanel.tsx';
 
 const FloatingBacktestPanel = lazy(() => import('./components/backtest/FloatingBacktestPanel.tsx').then(m => ({ default: m.FloatingBacktestPanel })));
 const AlertManager = lazy(() => import('./components/shared/AlertManager.tsx').then(m => ({ default: m.AlertManager })));
 const BacktestPage = lazy(() => import('./components/backtest/BacktestPage.tsx').then(m => ({ default: m.BacktestPage })));
-const ExchangePage = lazy(() => import('./components/exchange/ExchangePage.tsx').then(m => ({ default: m.ExchangePage })));
+const ExchangePage = lazy(() => import('./components/exchange/pages/ExchangePage.tsx').then(m => ({ default: m.ExchangePage })));
 
 export function App() {
     const connected = useMarketDataStore(s => s.connected);

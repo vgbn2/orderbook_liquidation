@@ -7,7 +7,7 @@ echo            TERMINUS — Trading Intelligence Dashboard
 echo                                                            
 echo    Orderbook · Options Flow · Liquidations · VWAF · GEX   
 echo  
-echo.
+
 
 :: ── Check prerequisites ──────────────────────────────────────
 where docker >nul 2>&1

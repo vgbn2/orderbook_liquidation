@@ -1,5 +1,5 @@
-import { useMarketDataStore } from '../../stores/marketDataStore';
-import * as safe from '../../utils/safe';
+import { useMarketDataStore } from '../../../stores/marketDataStore';
+import * as safe from '../../../utils/safe';
 
 export function Orderbook() {
     const { orderbook } = useMarketDataStore();
@@ -32,9 +32,10 @@ export function Orderbook() {
         1,
     );
 
-    const spread = asks.length > 0 && bids.length > 0
-        ? (asks[0].price - bids[0].price).toFixed(1)
-        : '—';
+    const spreadInfo = asks.length > 0 && bids.length > 0
+        ? (asks[0].price - bids[0].price)
+        : null;
+    const spread = spreadInfo !== null ? safe.fmt.price(spreadInfo) : '—';
 
     const wallPrices = new Set([
         ...(walls?.bid_walls ?? []).map((w: { price: number }) => w.price),

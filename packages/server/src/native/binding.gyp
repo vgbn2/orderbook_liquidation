@@ -4,11 +4,11 @@
     "cflags!":    ["-fno-exceptions"],
     "cflags_cc!": ["-fno-exceptions"],
     "sources": [
-      "src/terminus_core.cpp",
-      "src/orderbook.cpp",
-      "src/aggregator.cpp",
-      "src/vwaf.cpp",
-      "src/wall_detector.cpp"
+      "terminus_core.cpp",
+      "orderbook.cpp",
+      "aggregator.cpp",
+      "vwaf.cpp",
+      "wall_detector.cpp"
     ],
     "include_dirs": [
       "<!@(node -p \"require('node-addon-api').include\")"

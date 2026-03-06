@@ -11,8 +11,8 @@
  * - Invalidation buffer (clean breakout aborts setup)
  */
 
-import { logger } from '../logger.js';
-import { clientHub } from '../ws/client-hub.js';
+import { logger } from '../../logger.js';
+import { clientHub } from '../../ws/client-hub.js';
 
 // ── Types ──────────────────────────────────────────────────
 

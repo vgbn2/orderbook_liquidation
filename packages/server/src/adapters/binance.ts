@@ -3,11 +3,11 @@ import { logger } from '../logger.js';
 import { query } from '../db/timescale.js';
 import { redis } from '../db/redis.js';
 import { clientHub } from '../ws/client-hub.js';
-import { orderbookEngine } from '../engines/orderbook.js';
-import { amdDetector } from '../engines/amd.js';
-import { ictEngine } from '../engines/ict.js';
+import { orderbookEngine } from '../engines/signals/orderbook.js';
+import { amdDetector } from '../engines/signals/amd.js';
+import { ictEngine } from '../engines/signals/ict.js';
 import { tradeBatcher } from '../db/TradeBatcher.js';
-import { aggregatedCandleEngine } from '../engines/AggregatedCandleEngine.js';
+import { aggregatedCandleEngine } from '../engines/core/AggregatedCandleEngine.js';
 import type { Candle, ExchangeAdapter, Exchange } from './types.js';
 
 // ══════════════════════════════════════════════════════════════
@@ -190,7 +190,7 @@ export class BinanceAdapter implements ExchangeAdapter {
 
         // Cache latest price in Redis
         redis.set(`price:${this.symbol.toUpperCase()}`, candle.close.toString()).catch(() => { });
-        import('../engines/alerts.js').then(m => m.alertsEngine.setSpot(candle.close));
+        import('../engines/signals/alerts.js').then(m => m.alertsEngine.setSpot(candle.close));
 
         // Persist closed candles to TimescaleDB
         const PERSIST_INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];

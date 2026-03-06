@@ -1,8 +1,8 @@
-import { logger } from '../logger.js';
-import { redis } from '../db/redis.js';
-import { query } from '../db/timescale.js';
-import { clientHub } from '../ws/client-hub.js';
-import type { OrderbookLevel, OrderbookSnapshot, OrderbookWall, AggregatedOrderbook, Exchange } from '../adapters/types.js';
+import { logger } from '../../logger.js';
+import { redis } from '../../db/redis.js';
+import { query } from '../../db/timescale.js';
+import { clientHub } from '../../ws/client-hub.js';
+import type { OrderbookLevel, OrderbookSnapshot, OrderbookWall, AggregatedOrderbook, Exchange } from '../../adapters/types.js';
 
 // ══════════════════════════════════════════════════════════════
 //  Orderbook Engine — Delta State Machine + Wall Detection
@@ -155,7 +155,7 @@ export class OrderbookEngine {
         if (allLevels.length === 0) return { bid_walls: [], ask_walls: [] };
 
         // Median qty
-        const sortedQtys = allLevels.map(l => l.qty).sort((a, b) => a - b);
+        const sortedQtys = allLevels.map((l: any) => l.qty).sort((a, b) => a - b);
         const mid = Math.floor(sortedQtys.length / 2);
         const medianQty = sortedQtys.length % 2 !== 0 ? sortedQtys[mid] : (sortedQtys[mid - 1] + sortedQtys[mid]) / 2;
         const threshold = medianQty * 4;
@@ -163,8 +163,8 @@ export class OrderbookEngine {
         const totalBidQty = snapshot.bids.reduce((s, l) => s + l.qty, 0);
         const totalAskQty = snapshot.asks.reduce((s, l) => s + l.qty, 0);
 
-        const rawBids = snapshot.bids.filter(l => l.qty > threshold);
-        const rawAsks = snapshot.asks.filter(l => l.qty > threshold);
+        const rawBids = snapshot.bids.filter((l: any) => l.qty > threshold);
+        const rawAsks = snapshot.asks.filter((l: any) => l.qty > threshold);
 
         // Update age map
         const currentWallPrices = new Set([...rawBids, ...rawAsks].map(w => w.price));

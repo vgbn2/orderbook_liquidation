@@ -1,7 +1,7 @@
-import { logger } from '../logger.js';
-import { clientHub } from '../ws/client-hub.js';
-import { redis } from '../db/redis.js';
-import { query } from '../db/timescale.js';
+import { logger } from '../../logger.js';
+import { clientHub } from '../../ws/client-hub.js';
+import { redis } from '../../db/redis.js';
+import { query } from '../../db/timescale.js';
 import type {
     ConfluenceZone,
     ConfluenceReason,
@@ -10,7 +10,7 @@ import type {
     LiquidationHeatmapEntry,
     VWAFData,
     GradeScore,
-} from '../adapters/types.js';
+} from '../../adapters/types.js';
 
 // ══════════════════════════════════════════════════════════════
 //  Confluence Engine — Multi-Signal Zone Detection
@@ -198,10 +198,10 @@ export class ConfluenceEngine {
         // ── Grade Algorithm: Compute liqRatio ───────────
         const topZones = zones.slice(0, 8);
         const bullScore = topZones
-            .filter(z => z.center < spot)
+            .filter((z: any) => z.center < spot)
             .reduce((s, z) => s + z.score, 0);
         const bearScore = topZones
-            .filter(z => z.center > spot)
+            .filter((z: any) => z.center > spot)
             .reduce((s, z) => s + z.score, 0);
 
         const totalScore = bullScore + bearScore;
@@ -254,10 +254,10 @@ export class ConfluenceEngine {
             const now = new Date();
             for (const z of zones.slice(0, 10)) {
                 query(
-                    `INSERT INTO confluence_zones (time, symbol, price, score, signals, timeframe)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [now, 'BTCUSDT', z.center, z.score, JSON.stringify(z.reasons), '1m']
-                ).catch(e => logger.error('Confluence DB Insert Error', e));
+                    `INSERT INTO confluence_zones (time, symbol, price_low, price_high, center, score, strength, reasons)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                    [now, 'BTCUSDT', z.price_low, z.price_high, z.center, z.score, z.strength, JSON.stringify(z.reasons)]
+                ).catch((e: any) => logger.error('Confluence DB Insert Error', e));
             }
 
             clientHub.broadcast('confluence', zones);

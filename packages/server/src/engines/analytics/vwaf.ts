@@ -1,8 +1,8 @@
-import { logger } from '../logger.js';
-import { clientHub } from '../ws/client-hub.js';
-import { redis } from '../db/redis.js';
-import { query } from '../db/timescale.js';
-import type { VWAFData, FundingSnapshot, Exchange } from '../adapters/types.js';
+import { logger } from '../../logger.js';
+import { clientHub } from '../../ws/client-hub.js';
+import { redis } from '../../db/redis.js';
+import { query } from '../../db/timescale.js';
+import type { VWAFData, FundingSnapshot, Exchange } from '../../adapters/types.js';
 
 // ══════════════════════════════════════════════════════════════
 //  VWAF Engine — Volume-Weighted Aggregate Funding
@@ -85,12 +85,15 @@ export class VWAFEngine {
             // Cache in Redis
             redis.set('vwaf', JSON.stringify(data), 'EX', 30).catch(() => { });
 
-            // Persist to TimescaleDB
-            query(
-                `INSERT INTO funding_snapshots (time, symbol, vwaf, vwaf_annualized, vwaf_8h_pct, total_oi_usd, divergence, sentiment)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [new Date(), 'BTCUSDT', data.vwaf, data.vwaf_annualized, data.vwaf_8h_pct, data.total_oi_usd, data.divergence, data.sentiment]
-            ).catch(e => logger.error('VWAF DB Insert Error', e));
+            // Persist to TimescaleDB (one row per exchange)
+            const now = new Date();
+            for (const ex of data.by_exchange) {
+                query(
+                    `INSERT INTO funding_snapshots (time, exchange, symbol, rate, oi_usd, vwaf)
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [now, ex.exchange, 'BTCUSDT', ex.rate, ex.oi_usd, data.vwaf]
+                ).catch((e: any) => logger.error('VWAF DB Insert Error', e));
+            }
 
             clientHub.broadcast('vwaf', data);
         }, BROADCAST_INTERVAL);

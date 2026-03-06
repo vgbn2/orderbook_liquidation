@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { logger } from '../logger.js';
-import { orderbookEngine } from '../engines/orderbook.js';
-import { aggregatedCandleEngine } from '../engines/AggregatedCandleEngine.js';
+import { orderbookEngine } from '../engines/signals/orderbook.js';
+import { aggregatedCandleEngine } from '../engines/core/AggregatedCandleEngine.js';
 
 let ws: WebSocket | null = null;
 let isStopped = false;

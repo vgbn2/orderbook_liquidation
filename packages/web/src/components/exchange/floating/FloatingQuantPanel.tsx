@@ -1,105 +1,21 @@
-import { useState, useEffect } from 'react';
-import { useDraggable } from '../../hooks/useDraggable';
-import { ErrorBoundary } from '../shared/ErrorBoundary.tsx';
-import { QuantPanel } from './QuantPanel.tsx';
-
-export type PanelMode = 'DOCKED_BOTTOM' | 'FLOATING' | 'COLLAPSED';
+import { ErrorBoundary } from '../../shared/ErrorBoundary.tsx';
+import { QuantPanel } from '../panels/QuantPanel.tsx';
+import { FloatingPanelWrapper } from '../../shared/FloatingPanelWrapper.tsx';
 
 interface Props { onClose: () => void; }
 
 export function FloatingQuantPanel({ onClose }: Props) {
-    const [mode, setMode] = useState<PanelMode>('FLOATING');
-    const [panelHeight, setPanelHeight] = useState(520);
-    const [isResizing, setIsResizing] = useState(false);
-
-    const { elementRef, handleMouseDown, isDragging } = useDraggable({
-        initialPosition: { x: Math.max(60, window.innerWidth / 2 - 280), y: 80 }
-    });
-
-    // Resize logic
-    useEffect(() => {
-        if (!isResizing) return;
-        const move = (e: MouseEvent) => {
-            const el = (elementRef as any).current;
-            if (!el) return;
-            const rect = el.getBoundingClientRect();
-            const next = e.clientY - rect.top;
-            if (next > 200 && next < window.innerHeight - 80) setPanelHeight(next);
-        };
-        const up = () => setIsResizing(false);
-        window.addEventListener('mousemove', move);
-        window.addEventListener('mouseup', up);
-        return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-    }, [isResizing]);
-
-    const getStyles = (): React.CSSProperties => {
-        const base: React.CSSProperties = {
-            position: 'fixed', zIndex: 9998,
-            background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            transition: isDragging ? 'none' : 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-            color: 'var(--text-main)', fontFamily: "'JetBrains Mono', monospace",
-            display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            borderRadius: '12px', userSelect: 'none',
-        };
-        if (mode === 'DOCKED_BOTTOM') return { ...base, bottom: 0, left: 0, width: '100vw', height: `${panelHeight}px`, borderRadius: '12px 12px 0 0', borderBottom: 'none', transform: 'none' };
-        if (mode === 'COLLAPSED') return { ...base, bottom: 20, right: 20, width: '220px', height: '40px', borderRadius: '8px', transform: 'none' };
-        return { ...base, width: '560px', height: `${panelHeight}px` };
-    };
-
     return (
-        <div ref={elementRef as any} style={getStyles()}>
-            {/* Header */}
-            <div
-                onMouseDown={mode === 'FLOATING' ? handleMouseDown : undefined}
-                style={{
-                    padding: '8px 16px', background: 'rgba(0,0,0,0.25)',
-                    borderBottom: '1px solid var(--border-medium)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    cursor: mode === 'FLOATING' ? (isDragging ? 'grabbing' : 'grab') : 'default',
-                }}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--accent)', letterSpacing: '1px' }}>◈ MACRO QUANT</span>
-                </div>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                    <Btn active={mode === 'FLOATING'} onClick={() => setMode('FLOATING')}>◱</Btn>
-                    <Btn active={mode === 'DOCKED_BOTTOM'} onClick={() => setMode('DOCKED_BOTTOM')}>↓</Btn>
-                    <Btn active={mode === 'COLLAPSED'} onClick={() => setMode('COLLAPSED')}>—</Btn>
-                    <Btn onClick={onClose} style={{ color: 'var(--negative)', marginLeft: '4px' }}>×</Btn>
-                </div>
-            </div>
-
-            {/* Resize handle at bottom */}
-            {mode !== 'COLLAPSED' && (
-                <div onMouseDown={(e) => { setIsResizing(true); e.preventDefault(); }}
-                    style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '5px', cursor: 'row-resize', zIndex: 10 }} />
-            )}
-
-            {/* Body */}
-            {mode !== 'COLLAPSED' ? (
-                <div style={{ flex: 1, overflowY: 'auto', padding: '0' }}>
-                    <ErrorBoundary name="QuantPanel">
-                        <QuantPanel />
-                    </ErrorBoundary>
-                </div>
-            ) : (
-                <div style={{ height: '100%', display: 'flex', alignItems: 'center', padding: '0 12px', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--accent)' }}>◈ MACRO QUANT</span>
-                    <button onClick={() => setMode('FLOATING')} style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px' }}>◱ Expand</button>
-                </div>
-            )}
-        </div>
-    );
-}
-
-function Btn({ children, active, onClick, style }: { children: React.ReactNode; active?: boolean; onClick: () => void; style?: React.CSSProperties }) {
-    return (
-        <button onClick={onClick} style={{
-            background: active ? 'rgba(0,255,200,0.1)' : 'transparent',
-            border: 'none', color: active ? 'var(--accent)' : 'var(--text-muted)',
-            width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', borderRadius: 4, fontSize: 12, ...style,
-        }}>{children}</button>
+        <FloatingPanelWrapper
+            title="◈ MACRO QUANT"
+            initialPosition={{ x: Math.max(60, window.innerWidth / 2 - 280), y: 80 }}
+            defaultHeight={520}
+            collapsedRight={20}
+            onClose={onClose}
+        >
+            <ErrorBoundary name="QuantPanel">
+                <QuantPanel />
+            </ErrorBoundary>
+        </FloatingPanelWrapper>
     );
 }

@@ -527,6 +527,7 @@ export function TerminusNav() {
         defaultMarkets.map(m => ({ ...m, volume: 0, price: '—', change: '—' }))
     );
     const settingsBtnRef = useRef<HTMLButtonElement>(null);
+    const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
     useEffect(() => {
         let ws: WebSocket;
@@ -760,19 +761,21 @@ export function TerminusNav() {
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16, paddingRight: 16 }}>
 
                     {/* Authentication */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <SignedOut>
-                            <SignInButton mode="modal">
-                                <button className="btn btn-outline" style={{ fontSize: 12, padding: "4px 12px", border: "1px solid var(--border-medium)", background: "transparent", color: "var(--text-primary)", borderRadius: "var(--r-md)", cursor: "pointer" }}>Sign In</button>
-                            </SignInButton>
-                            <SignUpButton mode="modal">
-                                <button className="btn btn-primary" style={{ fontSize: 12, padding: "4px 12px", background: "var(--accent)", color: "#000", border: "none", borderRadius: "var(--r-md)", cursor: "pointer" }}>Sign Up</button>
-                            </SignUpButton>
-                        </SignedOut>
-                        <SignedIn>
-                            <UserButton appearance={{ elements: { userButtonAvatarBox: { width: 28, height: 28 } } }} />
-                        </SignedIn>
-                    </div>
+                    {PUBLISHABLE_KEY && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <SignedOut>
+                                <SignInButton mode="modal">
+                                    <button className="btn btn-outline" style={{ fontSize: 12, padding: "4px 12px", border: "1px solid var(--border-medium)", background: "transparent", color: "var(--text-primary)", borderRadius: "var(--r-md)", cursor: "pointer" }}>Sign In</button>
+                                </SignInButton>
+                                <SignUpButton mode="modal">
+                                    <button className="btn btn-primary" style={{ fontSize: 12, padding: "4px 12px", background: "var(--accent)", color: "#000", border: "none", borderRadius: "var(--r-md)", cursor: "pointer" }}>Sign Up</button>
+                                </SignUpButton>
+                            </SignedOut>
+                            <SignedIn>
+                                <UserButton appearance={{ elements: { userButtonAvatarBox: { width: 28, height: 28 } } }} />
+                            </SignedIn>
+                        </div>
+                    )}
 
                     <div className="divider" style={{ width: 1, height: 20, background: "var(--border-medium)" }} />
 

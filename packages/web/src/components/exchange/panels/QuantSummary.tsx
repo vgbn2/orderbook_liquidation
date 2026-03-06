@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react';
-import { useMarketDataStore } from '../../stores/marketDataStore';
+import { useMarketDataStore } from '../../../stores/marketDataStore';
+import { computeDirectionalBias } from '../../../utils/quantUtils';
 
 // ── Regime classifier ───────────────────────────────────────────────────────
 
@@ -18,22 +19,6 @@ function classifyRegime(drift: number, vol: number): RegimeInfo {
     return { icon: '📊', label: 'NEUTRAL', color: 'var(--color-text-muted)' };
 }
 
-// ── Directional bias computation ────────────────────────────────────────────
-
-function computeBias(sigmaGrid: { sigma: number; probability: number; pctMove: number }[]) {
-    if (!sigmaGrid?.length) return null;
-    const totalProb = sigmaGrid.reduce((s, r) => s + r.probability, 0) || 1;
-    const expectedMove = sigmaGrid.reduce((s, r) => s + (r.pctMove * r.probability) / totalProb, 0);
-    const bullWeight = sigmaGrid.filter(r => r.pctMove >= 0).reduce((s, r) => s + r.probability, 0);
-    const bearWeight = sigmaGrid.filter(r => r.pctMove < 0).reduce((s, r) => s + r.probability, 0);
-    const total = bullWeight + bearWeight || 1;
-    const bullPct = (bullWeight / total) * 100;
-    const bearPct = (bearWeight / total) * 100;
-    const direction = expectedMove >= 0 ? 'BULLISH' : 'BEARISH';
-    const confidence = Math.abs(bullPct - bearPct);
-    const strength = confidence > 20 ? 'HIGH' : confidence > 8 ? 'MED' : 'LOW';
-    return { direction, expectedMove, bullPct, bearPct, confidence, strength };
-}
 
 // ── QuantSummary component ──────────────────────────────────────────────────
 
@@ -47,7 +32,7 @@ export function QuantSummary() {
 
     const bias = useMemo(() => {
         if (!quantSnapshot?.sigmaGrid) return null;
-        return computeBias(quantSnapshot.sigmaGrid);
+        return computeDirectionalBias(quantSnapshot.sigmaGrid);
     }, [quantSnapshot?.sigmaGrid]);
 
     const openAnalytics = useCallback(() => {

@@ -1,7 +1,7 @@
-import { logger } from '../logger.js';
-import { clientHub } from '../ws/client-hub.js';
-import { redis } from '../db/redis.js';
-import type { Candle } from '../adapters/types.js';
+import { logger } from '../../logger.js';
+import { clientHub } from '../../ws/client-hub.js';
+import { redis } from '../../db/redis.js';
+import type { Candle } from '../../adapters/types.js';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -366,7 +366,7 @@ export class PreciseIctEngine {
     private getLiqBacking(level: number, type: 'BSL' | 'SSL'): LiqBacking | null {
         if (!this.liqHeatmap || this.liqHeatmap.length === 0) return null;
         const tolerance = level * 0.005;
-        const nearby = this.liqHeatmap.filter(e => Math.abs(e.price - level) <= tolerance);
+        const nearby = this.liqHeatmap.filter((e: any) => Math.abs(e.price - level) <= tolerance);
         if (nearby.length === 0) return null;
 
         const total = nearby.reduce((s, e) => s + e.total, 0);
@@ -391,7 +391,7 @@ export class PreciseIctEngine {
         };
         const topic = `ict.data.${symbol.toUpperCase()}.${interval}`;
         clientHub.broadcast(topic as any, payload);
-        redis.set(topic, JSON.stringify(payload), 'EX', 120).catch(err => logger.error({ err }, 'Failed to cache ICT data'));
+        redis.set(topic, JSON.stringify(payload), 'EX', 120).catch((err: any) => logger.error({ err }, 'Failed to cache ICT data'));
     }
 
     getSweeps(symbol: string, interval: string): ConfirmedSweep[] {

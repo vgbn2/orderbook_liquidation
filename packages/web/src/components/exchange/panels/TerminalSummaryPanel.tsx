@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import { useMarketDataStore } from '../../stores/marketDataStore';
-import { useCandleStore } from '../../stores/candleStore';
-import { fmt, safe } from '../../utils/safe';
-import { PanelSkeleton } from '../shared/PanelSkeleton';
+import { useMarketDataStore } from '../../../stores/marketDataStore';
+import { useCandleStore } from '../../../stores/candleStore';
+import { fmt, safe } from '../../../utils/safe';
+import { PanelSkeleton } from '../../shared/PanelSkeleton';
 
 // ── Regime classifier ─────────────────────────────────────────
 function classifyRegime(drift: number, vol: number) {
@@ -33,11 +33,11 @@ function computeSignalGrade(bias: any, liqRatio: number, optionsBias: string | n
 
 export function TerminalSummaryPanel() {
     // ── 1. ALL HOOKS UNCONDITIONALLY ──
-    const quantSnapshot = useMarketDataStore(s => s.quantSnapshot);
-    const options = useMarketDataStore(s => s.options);
-    const confluenceZones = useMarketDataStore(s => s.confluenceZones);
-    const lastPrice = useMarketDataStore(s => s.lastPrice);
-    const symbol = useCandleStore(s => s.symbol);
+    const quantSnapshot = useMarketDataStore((s: any) => s.quantSnapshot);
+    const options = useMarketDataStore((s: any) => s.options);
+    const confluenceZones = useMarketDataStore((s: any) => s.confluenceZones);
+    const lastPrice = useMarketDataStore((s: any) => s.lastPrice);
+    const symbol = useCandleStore((s: any) => s.symbol);
 
     const computed = useMemo(() => {
         // Compute bias from sigma grid
@@ -46,8 +46,8 @@ export function TerminalSummaryPanel() {
         if (sigmaGrid.length > 0) {
             const totalProb = sigmaGrid.reduce((s, r) => s + safe.num(r.probability), 0) || 1;
             const expectedMove = sigmaGrid.reduce((s, r) => s + (safe.num(r.pctMove) * safe.num(r.probability)) / totalProb, 0);
-            const bullWeight = sigmaGrid.filter(r => safe.num(r.pctMove) >= 0).reduce((s, r) => s + safe.num(r.probability), 0);
-            const bearWeight = sigmaGrid.filter(r => safe.num(r.pctMove) < 0).reduce((s, r) => s + safe.num(r.probability), 0);
+            const bullWeight = sigmaGrid.filter((r: any) => safe.num(r.pctMove) >= 0).reduce((s, r) => s + safe.num(r.probability), 0);
+            const bearWeight = sigmaGrid.filter((r: any) => safe.num(r.pctMove) < 0).reduce((s, r) => s + safe.num(r.probability), 0);
             const total = bullWeight + bearWeight || 1;
             const bullPct = (bullWeight / total) * 100;
             const bearPct = (bearWeight / total) * 100;
@@ -80,7 +80,7 @@ export function TerminalSummaryPanel() {
         if (quantiles.p75) areas.push({ label: 'P75', price: safe.num(quantiles.p75.price), type: 'resistance' });
         if (quantiles.p95) areas.push({ label: 'P95', price: safe.num(quantiles.p95.price), type: 'resistance' });
 
-        zones.slice(0, 4).forEach(z => {
+        zones.slice(0, 4).forEach((z: any) => {
             areas.push({
                 label: z.type === 'support' ? 'CONF SUP' : 'CONF RES',
                 price: safe.num(z.price),

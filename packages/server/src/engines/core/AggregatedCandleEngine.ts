@@ -1,8 +1,8 @@
 import { EventEmitter } from 'events';
-import { Trade, Exchange } from '../adapters/types.js';
-import { logger } from '../logger.js';
-import { query } from '../db/timescale.js';
-import { clientHub } from '../ws/client-hub.js';
+import { Trade, Exchange } from '../../adapters/types.js';
+import { logger } from '../../logger.js';
+import { query } from '../../db/timescale.js';
+import { clientHub } from '../../ws/client-hub.js';
 
 interface CandleAccumulator {
     open: number | null;

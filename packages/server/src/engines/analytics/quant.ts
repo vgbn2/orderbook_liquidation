@@ -1,12 +1,12 @@
-import { logger } from '../logger.js';
-import { redis } from '../db/redis.js';
-import { clientHub } from '../ws/client-hub.js';
-import { binanceAdapter } from '../adapters/binance.js';
+import { logger } from '../../logger.js';
+import { redis } from '../../db/redis.js';
+import { clientHub } from '../../ws/client-hub.js';
+import { binanceAdapter } from '../../adapters/binance.js';
 import YahooFinance from 'yahoo-finance2';
 // Suppress deprecation warning because the library gracefully maps historical() -> chart() under the hood
 const yf = new YahooFinance({ suppressNotices: ['ripHistorical'] });
 
-import { computeQuantAnalytics, MacroPrices } from './quantMath.js';
+import { computeQuantAnalytics, MacroPrices } from '../analytics/quantMath.js';
 
 const INTERVAL = 30 * 60 * 1000; // 30 minutes
 const MAX_RETRIES = 3;
@@ -166,15 +166,15 @@ class QuantEngine {
             throw new Error(`Insufficient crypto data for ${symbol}`);
         }
 
-        const prices = cryptoKlines.map(k => k.close);
-        const dates = cryptoKlines.map(k => new Date(k.time * 1000).toISOString().split('T')[0]);
+        const prices = cryptoKlines.map((k: any) => k.close);
+        const dates = cryptoKlines.map((k: any) => new Date(k.time * 1000).toISOString().split('T')[0]);
 
         // 2. Fetch Macro indices
         const macroPrices: MacroPrices = {};
         for (const [idx, ticker] of this.MACRO_ASSETS.entries()) {
             try {
                 // To avoid rate limits, small delay
-                if (idx > 0) await new Promise(r => setTimeout(r, 200));
+                if (idx > 0) await new Promise((r: any) => setTimeout(r, 200));
 
                 const data = await yf.historical(ticker, {
                     period1: period1Str,

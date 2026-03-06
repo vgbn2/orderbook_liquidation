@@ -1,6 +1,6 @@
-import { logger } from '../logger.js';
-import { query } from '../db/timescale.js';
-import { clientHub } from '../ws/client-hub.js';
+import { logger } from '../../logger.js';
+import { query } from '../../db/timescale.js';
+import { clientHub } from '../../ws/client-hub.js';
 
 interface ReplayConfig {
     startTime: number; // unix ms
@@ -107,9 +107,9 @@ class ReplayEngine {
         const events: any[] = [];
 
         // Normalize and merge
-        obRes.rows.forEach(r => events.push({ type: 'orderbook', time: new Date(r.time).getTime(), data: r }));
-        tradeRes.rows.forEach(r => events.push({ type: 'trade', time: new Date(r.time).getTime(), data: r }));
-        liqRes.rows.forEach(r => events.push({ type: 'liquidation', time: new Date(r.time).getTime(), data: r }));
+        obRes.rows.forEach((r: any) => events.push({ type: 'orderbook', time: new Date(r.time).getTime(), data: r }));
+        tradeRes.rows.forEach((r: any) => events.push({ type: 'trade', time: new Date(r.time).getTime(), data: r }));
+        liqRes.rows.forEach((r: any) => events.push({ type: 'liquidation', time: new Date(r.time).getTime(), data: r }));
 
         return events.sort((a, b) => a.time - b.time);
     }

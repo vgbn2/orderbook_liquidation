@@ -1,5 +1,5 @@
-import { useMarketDataStore } from '../../stores/marketDataStore';
-import { PanelSection, Badge } from '../shared/UI.tsx';
+import { useMarketDataStore } from '../../../stores/marketDataStore';
+import { PanelSection, Badge } from '../../shared/UI.tsx';
 
 const SIGNAL_ICONS: Record<string, string> = {
     OB_BID_WALL: '🟢',

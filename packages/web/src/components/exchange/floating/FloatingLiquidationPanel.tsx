@@ -1,122 +1,42 @@
-import { useState, useEffect } from 'react';
-import { useDraggable } from '../../hooks/useDraggable';
-import { ErrorBoundary } from '../shared/ErrorBoundary.tsx';
-import { LiquidationPanel } from './LiquidationPanel.tsx';
-import { ConfluencePanel } from './ConfluencePanel.tsx';
-
-export type PanelMode = 'DOCKED_BOTTOM' | 'FLOATING' | 'COLLAPSED';
+import { useState } from 'react';
+import { ErrorBoundary } from '../../shared/ErrorBoundary.tsx';
+import { LiquidationPanel } from '../panels/LiquidationPanel.tsx';
+import { ConfluencePanel } from '../panels/ConfluencePanel.tsx';
+import { FloatingPanelWrapper } from '../../shared/FloatingPanelWrapper.tsx';
 
 interface Props { onClose: () => void; }
 
 export function FloatingLiquidationPanel({ onClose }: Props) {
-    const [mode, setMode] = useState<PanelMode>('FLOATING');
-    const [panelHeight, setPanelHeight] = useState(480);
-    const [isResizing, setIsResizing] = useState(false);
     const [tab, setTab] = useState<'liquidation' | 'confluence'>('liquidation');
 
-    const { elementRef, handleMouseDown, isDragging } = useDraggable({
-        initialPosition: { x: Math.max(60, window.innerWidth / 2 - 280), y: 100 }
-    });
-
-    useEffect(() => {
-        if (!isResizing) return;
-        const move = (e: MouseEvent) => {
-            const el = (elementRef as any).current;
-            if (!el) return;
-            const rect = el.getBoundingClientRect();
-            const next = e.clientY - rect.top;
-            if (next > 200 && next < window.innerHeight - 80) setPanelHeight(next);
-        };
-        const up = () => setIsResizing(false);
-        window.addEventListener('mousemove', move);
-        window.addEventListener('mouseup', up);
-        return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-    }, [isResizing]);
-
-    const getStyles = (): React.CSSProperties => {
-        const base: React.CSSProperties = {
-            position: 'fixed', zIndex: 9998,
-            background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            transition: isDragging ? 'none' : 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-            color: 'var(--text-main)', fontFamily: "'JetBrains Mono', monospace",
-            display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            borderRadius: '12px', userSelect: 'none',
-        };
-        if (mode === 'DOCKED_BOTTOM') return { ...base, bottom: 0, left: 0, width: '100vw', height: `${panelHeight}px`, borderRadius: '12px 12px 0 0', borderBottom: 'none', transform: 'none' };
-        if (mode === 'COLLAPSED') return { ...base, bottom: 20, right: 260, width: '220px', height: '40px', borderRadius: '8px', transform: 'none' };
-        return { ...base, width: '560px', height: `${panelHeight}px` };
-    };
-
-    return (
-        <div ref={elementRef as any} style={getStyles()}>
-            {/* Header */}
-            <div
-                onMouseDown={mode === 'FLOATING' ? handleMouseDown : undefined}
-                style={{
-                    padding: '8px 16px', background: 'rgba(0,0,0,0.25)',
-                    borderBottom: '1px solid var(--border-medium)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    cursor: mode === 'FLOATING' ? (isDragging ? 'grabbing' : 'grab') : 'default',
-                }}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#ff3b5c', letterSpacing: '1px' }}>◈ LIQUIDATION · CONFLUENCE</span>
+    const headerTabs = (
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
+            {(['liquidation', 'confluence'] as const).map((t: any) => (
+                <div key={t} onClick={() => setTab(t)} style={{
+                    flex: 1, padding: '8px 4px', textAlign: 'center', fontSize: '10px',
+                    fontWeight: tab === t ? 700 : 500, letterSpacing: '0.3px', cursor: 'pointer',
+                    color: tab === t ? 'var(--accent)' : 'var(--text-muted)',
+                    borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
+                }}>
+                    {t === 'liquidation' ? 'LIQ CLUSTERS' : 'CONFLUENCE ZONES'}
                 </div>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                    <Btn active={mode === 'FLOATING'} onClick={() => setMode('FLOATING')}>◱</Btn>
-                    <Btn active={mode === 'DOCKED_BOTTOM'} onClick={() => setMode('DOCKED_BOTTOM')}>↓</Btn>
-                    <Btn active={mode === 'COLLAPSED'} onClick={() => setMode('COLLAPSED')}>—</Btn>
-                    <Btn onClick={onClose} style={{ color: 'var(--negative)', marginLeft: '4px' }}>×</Btn>
-                </div>
-            </div>
-
-            {mode !== 'COLLAPSED' && (
-                <>
-                    {/* Sub-tabs */}
-                    <div style={{ display: 'flex', borderBottom: '1px solid var(--border-medium)', background: 'var(--bg-surface)' }}>
-                        {(['liquidation', 'confluence'] as const).map(t => (
-                            <div key={t} onClick={() => setTab(t)} style={{
-                                flex: 1, padding: '8px 4px', textAlign: 'center', fontSize: '10px',
-                                fontWeight: tab === t ? 700 : 500, letterSpacing: '0.3px', cursor: 'pointer',
-                                color: tab === t ? 'var(--accent)' : 'var(--text-muted)',
-                                borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
-                            }}>
-                                {t === 'liquidation' ? 'LIQ CLUSTERS' : 'CONFLUENCE ZONES'}
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Resize handle */}
-                    <div onMouseDown={(e) => { setIsResizing(true); e.preventDefault(); }}
-                        style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '5px', cursor: 'row-resize', zIndex: 10 }} />
-
-                    {/* Body */}
-                    <div style={{ flex: 1, overflowY: 'auto' }}>
-                        <ErrorBoundary name={tab === 'liquidation' ? 'LiquidationPanel' : 'ConfluencePanel'}>
-                            {tab === 'liquidation' ? <LiquidationPanel /> : <ConfluencePanel />}
-                        </ErrorBoundary>
-                    </div>
-                </>
-            )}
-
-            {mode === 'COLLAPSED' && (
-                <div style={{ height: '100%', display: 'flex', alignItems: 'center', padding: '0 12px', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '10px', color: '#ff3b5c' }}>◈ LIQ · CONFLUENCE</span>
-                    <button onClick={() => setMode('FLOATING')} style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px' }}>◱ Expand</button>
-                </div>
-            )}
+            ))}
         </div>
     );
-}
 
-function Btn({ children, active, onClick, style }: { children: React.ReactNode; active?: boolean; onClick: () => void; style?: React.CSSProperties }) {
     return (
-        <button onClick={onClick} style={{
-            background: active ? 'rgba(0,255,200,0.1)' : 'transparent',
-            border: 'none', color: active ? 'var(--accent)' : 'var(--text-muted)',
-            width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', borderRadius: 4, fontSize: 12, ...style,
-        }}>{children}</button>
+        <FloatingPanelWrapper
+            title="◈ LIQUIDATION · CONFLUENCE"
+            titleColor="#ff3b5c"
+            initialPosition={{ x: Math.max(60, window.innerWidth / 2 - 280), y: 100 }}
+            defaultHeight={480}
+            collapsedRight={260}
+            onClose={onClose}
+            headerExtra={headerTabs}
+        >
+            <ErrorBoundary name={tab === 'liquidation' ? 'LiquidationPanel' : 'ConfluencePanel'}>
+                {tab === 'liquidation' ? <LiquidationPanel /> : <ConfluencePanel />}
+            </ErrorBoundary>
+        </FloatingPanelWrapper>
     );
 }

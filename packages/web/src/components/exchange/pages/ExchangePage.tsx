@@ -1,6 +1,7 @@
-import { useCandleStore } from '../../stores/candleStore';
-import { useMarketDataStore } from '../../stores/marketDataStore';
+import { useCandleStore } from '../../../stores/candleStore';
+import { useMarketDataStore } from '../../../stores/marketDataStore';
 import { useRef, useEffect } from 'react';
+import * as safe from '../../../utils/safe';
 
 // Also need to get EXCHANGE_CONFIG and Props
 interface Props {
@@ -21,13 +22,13 @@ export function ExchangePage({ exchange }: Props) {
     const cfg = EXCHANGE_CONFIG[exchange] || EXCHANGE_CONFIG.binance;
 
     // ── Read from stores ──────────────────────────────────────
-    const orderbook = useMarketDataStore(s => s.orderbook);
-    const trades = useMarketDataStore(s => s.trades);          // last 50 trades
-    const fundingRates = useMarketDataStore(s => s.fundingRates);    // array, most recent last
-    const openInterest = useMarketDataStore(s => s.openInterest);    // array, most recent last
-    const vwaf = useMarketDataStore(s => s.vwaf);
-    const lastPrice = useMarketDataStore(s => s.lastPrice);
-    const symbol = useCandleStore(s => s.symbol);
+    const orderbook = useMarketDataStore((s: any) => s.orderbook);
+    const trades = useMarketDataStore((s: any) => s.trades);          // last 50 trades
+    const fundingRates = useMarketDataStore((s: any) => s.fundingRates);    // array, most recent last
+    const openInterest = useMarketDataStore((s: any) => s.openInterest);    // array, most recent last
+    const vwaf = useMarketDataStore((s: any) => s.vwaf);
+    const lastPrice = useMarketDataStore((s: any) => s.lastPrice);
+    const symbol = useCandleStore((s: any) => s.symbol);
 
     const latestFunding = fundingRates[fundingRates.length - 1];
     const latestOI = openInterest[openInterest.length - 1];
@@ -149,7 +150,7 @@ function ExchangeOrderbook({ orderbook }: {
     const topAsks = asks.slice(0, 15);
     const topBids = bids.slice(0, 15);
     const maxQty = Math.max(...topAsks.map(l => l.qty), ...topBids.map(l => l.qty), 1);
-    const spread = asks.length && bids.length ? (asks[0].price - bids[0].price).toFixed(1) : '—';
+    const spread = asks.length && bids.length ? safe.fmt.price(asks[0].price - bids[0].price) : '—';
 
     const rowStyle = {
         display: 'flex', alignItems: 'center', gap: 8,
@@ -177,7 +178,7 @@ function ExchangeOrderbook({ orderbook }: {
                 <div key={`ask-${level.price}`} style={rowStyle}>
                     <div style={barStyle(level.qty, 'ask')} />
                     <span style={{ flex: 1, color: 'var(--color-negative)', fontWeight: 500 }}>
-                        {level.price.toFixed(1)}
+                        {safe.fmt.price(level.price)}
                     </span>
                     <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>
                         {level.qty.toFixed(3)}
@@ -199,7 +200,7 @@ function ExchangeOrderbook({ orderbook }: {
                 <div key={`bid-${level.price}`} style={rowStyle}>
                     <div style={barStyle(level.qty, 'bid')} />
                     <span style={{ flex: 1, color: 'var(--color-positive)', fontWeight: 500 }}>
-                        {level.price.toFixed(1)}
+                        {safe.fmt.price(level.price)}
                     </span>
                     <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>
                         {level.qty.toFixed(3)}
@@ -290,7 +291,7 @@ function DepthCurveChart({ orderbook }: {
             />
             <text x="${px(midPrice)}" y="${H - 4}" text-anchor="middle"
                 fill="var(--text-muted)" font-size="9" font-family="var(--font)">
-                MID ${midPrice.toFixed(0)}
+                MID ${safe.fmt.price(midPrice)}
             </text>
             <text x="${pad.l + 4}" y="${pad.t + 12}"
                 fill="var(--color-positive)" font-size="9" font-family="var(--font)">
@@ -315,13 +316,8 @@ function ExchangeStats({ exchange, accentColor, latestFunding, latestOI,
     oiDelta, vwaf, lastPrice, symbol }: any) {
 
     const fmtRate = (r: number | undefined) =>
-        r !== undefined ? `${(r * 100).toFixed(4)}%` : '—';
-    const fmtUSD = (v: number | undefined) => {
-        if (v === undefined) return '—';
-        if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-        if (v >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
-        return `$${v.toLocaleString()}`;
-    };
+        r !== undefined ? safe.fmt.pct(r * 100, 4) : '—';
+    const fmtUSD = (v: number | undefined) => safe.fmt.money(v);
 
     // Find this exchange's row in vwaf.by_exchange
     const exVwafRow = vwaf?.by_exchange?.find(
@@ -359,7 +355,7 @@ function ExchangeStats({ exchange, accentColor, latestFunding, latestOI,
             )}
             {statRow('Open Interest', fmtUSD(latestOI?.oi))}
             {statRow('OI Change',
-                oiDelta !== null ? `${oiDelta >= 0 ? '+' : ''}${oiDelta.toFixed(2)}%` : '—',
+                oiDelta !== null ? safe.fmt.pct(oiDelta) : '—',
                 oiDelta !== null
                     ? (oiDelta > 0 ? 'var(--color-positive)' : 'var(--color-negative)')
                     : undefined
@@ -433,7 +429,7 @@ function TradeTape({ trades }: {
                             {isBuy ? '▲' : '▼'}
                         </span>
                         <span style={{ flex: 1, color: 'var(--text-primary)', fontFamily: 'var(--font)' }}>
-                            {t.price.toFixed(1)}
+                            {safe.fmt.price(t.price)}
                         </span>
                         <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>
                             {t.qty.toFixed(4)}

@@ -1,7 +1,7 @@
-import { logger } from '../logger.js';
-import { clientHub } from '../ws/client-hub.js';
-import { query } from '../db/timescale.js';
-import type { OptionsAnalytics, GEXData, Exchange } from '../adapters/types.js';
+import { logger } from '../../logger.js';
+import { clientHub } from '../../ws/client-hub.js';
+import { query } from '../../db/timescale.js';
+import type { OptionsAnalytics, GEXData, Exchange } from '../../adapters/types.js';
 
 // ══════════════════════════════════════════════════════════════
 //  Options Analytics Engine
@@ -148,16 +148,25 @@ export class OptionsEngine {
             const analytics = this.compute();
             if (!analytics) return;
 
-            // Persist to TimescaleDB
+            // Persist to TimescaleDB (one row per type per strike)
             const now = new Date();
+            const expiry = new Date(Date.now() + 30 * 86400_000); // approximate expiry
             for (const [strikeStr, data] of Object.entries(analytics.oi_by_strike)) {
                 const strike = parseFloat(strikeStr);
-                const gex = analytics.gex_by_strike[strike] || 0;
+                const strikeData = this.strikes.get(strike);
+                const iv = strikeData?.iv ?? null;
+                // Call row
                 query(
-                    `INSERT INTO options_snapshots (time, symbol, strike, expiry, call_oi, put_oi, gex)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                    [now, 'BTCUSDT', strike, analytics.expiry, data.call_oi, data.put_oi, gex]
-                ).catch(e => logger.error('Options DB Insert Error', e));
+                    `INSERT INTO options_snapshots (time, symbol, strike, expiry, type, oi, iv, delta, gamma)
+                     VALUES ($1, $2, $3, $4, 'call', $5, $6, NULL, NULL)`,
+                    [now, 'BTCUSDT', strike, expiry, data.call_oi, iv]
+                ).catch((e: any) => logger.error('Options DB Insert Error', e));
+                // Put row
+                query(
+                    `INSERT INTO options_snapshots (time, symbol, strike, expiry, type, oi, iv, delta, gamma)
+                     VALUES ($1, $2, $3, $4, 'put', $5, $6, NULL, NULL)`,
+                    [now, 'BTCUSDT', strike, expiry, data.put_oi, iv]
+                ).catch((e: any) => logger.error('Options DB Insert Error', e));
             }
 
             clientHub.broadcast('options.analytics' as any, analytics);

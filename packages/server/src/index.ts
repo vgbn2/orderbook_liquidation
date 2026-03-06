@@ -17,15 +17,15 @@ import { startHyperliquid, stopHyperliquid } from './adapters/hyperliquid.js';
 import { startBitget, stopBitget } from './adapters/bitget.js';
 import { startGateio, stopGateio } from './adapters/gateio.js';
 import { ohlcvRoutes } from './routes/ohlcv.js';
-import { optionsEngine, generateSimulatedChain, generateSimulatedTrade } from './engines/options.js';
-import { liquidationEngine, generateSimulatedLiquidation, seedLiquidationHistory } from './engines/liquidations.js';
-import { vwafEngine, generateSimulatedFunding } from './engines/vwaf.js';
-import { confluenceEngine } from './engines/confluence.js';
-import { ictEngine } from './engines/ict.js';
-import { alertsEngine } from './engines/alerts.js';
-import { replayEngine } from './engines/replay.js';
-import { quantEngine } from './engines/quant.js';
-import { clerkPlugin } from '@clerk/fastify';
+import { optionsEngine, generateSimulatedChain, generateSimulatedTrade } from './engines/analytics/options.js';
+import { liquidationEngine, generateSimulatedLiquidation, seedLiquidationHistory } from './engines/signals/liquidations.js';
+import { vwafEngine, generateSimulatedFunding } from './engines/analytics/vwaf.js';
+import { confluenceEngine } from './engines/signals/confluence.js';
+import { ictEngine } from './engines/signals/ict.js';
+import { alertsEngine } from './engines/signals/alerts.js';
+import { replayEngine } from './engines/core/replay.js';
+import { quantEngine } from './engines/analytics/quant.js';
+// import { clerkPlugin } from '@clerk/fastify';
 import { userRoutes } from './routes/user.js';
 
 // ══════════════════════════════════════════════════════════════
@@ -84,7 +84,7 @@ async function start(): Promise<void> {
     await runMigrations();
 
     // ── Register routes ──────────────────────────
-    await app.register(clerkPlugin);
+    // await app.register(clerkPlugin);
     await app.register(ohlcvRoutes);
     await app.register(userRoutes, { prefix: '/api/user' });
 

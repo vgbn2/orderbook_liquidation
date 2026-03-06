@@ -1,4 +1,4 @@
-import { logger } from '../logger.js';
+import { logger } from '../../logger.js';
 import bindings from 'bindings';
 
 // Type definitions matching the C++ structs

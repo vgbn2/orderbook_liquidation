@@ -1,8 +1,8 @@
-import { logger } from '../logger.js';
-import { clientHub } from '../ws/client-hub.js';
-import { query } from '../db/timescale.js';
-import { redis } from '../db/redis.js';
-import type { LiquidationEvent, LiquidationHeatmapEntry } from '../adapters/types.js';
+import { logger } from '../../logger.js';
+import { clientHub } from '../../ws/client-hub.js';
+import { query } from '../../db/timescale.js';
+import { redis } from '../../db/redis.js';
+import type { LiquidationEvent, LiquidationHeatmapEntry } from '../../adapters/types.js';
 
 // ══════════════════════════════════════════════════════════════
 //  Advanced Liquidity Engine — DIY Heatmap
@@ -167,7 +167,7 @@ export class LiquidationEngine {
                 long_liq_usd: Math.round(d.long_liq_usd),
                 short_liq_usd: Math.round(d.short_liq_usd),
                 total: Math.round(d.long_liq_usd + d.short_liq_usd)
-            })).filter(b => b.total > 100_000).sort((a, b) => a.price - b.price);
+            })).filter((b: any) => b.total > 100_000).sort((a, b) => a.price - b.price);
 
             const totalLiq = heatmap.reduce((s, b) => s + b.total, 0);
 
@@ -179,7 +179,7 @@ export class LiquidationEngine {
 
             this.lastHeatmap = payload.heatmap;
             clientHub.broadcast('liquidations.heatmap' as any, payload);
-            redis.set('liquidations.heatmap', JSON.stringify(payload), 'EX', 60).catch(err => logger.error({ err }, 'Failed to cache heatmap'));
+            redis.set('liquidations.heatmap', JSON.stringify(payload), 'EX', 60).catch((err: any) => logger.error({ err }, 'Failed to cache heatmap'));
 
         } catch (err) {
             logger.error({ err }, 'Failed to compute Liquidation Heatmap via REST models');
