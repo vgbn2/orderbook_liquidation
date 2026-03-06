@@ -1,3 +1,3 @@
 # TODO List
 
-- [ ] Fix timeframe switching medium -- 2026-02-27
+- [x] Fix timeframe switching medium -- 2026-02-27

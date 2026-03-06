@@ -138,7 +138,7 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
     addSignificantLiquidation: (event) => {
         if (!event) return;
         const size = event.size_usd ?? event.size ?? 0;
-        if (size < 10_000) return; // Ignore sub-$10K events
+        if (size < 1_000_000) return; // Ignore sub-$1M events
         set((s) => ({
             significantLiquidations: [event, ...s.significantLiquidations].slice(0, 50),
         }));
