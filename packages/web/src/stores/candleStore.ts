@@ -65,7 +65,10 @@ export const useCandleStore = create<CandleState>((set) => ({
     setSymbol: (symbol) => { lsSet('terminus_market_symbol', symbol); set({ symbol }); },
 
     timeframe: lsGet('terminus_market_timeframe') || '1h',
-    setTimeframe: (timeframe) => { lsSet('terminus_market_timeframe', timeframe); set({ timeframe }); },
+    setTimeframe: (timeframe) => {
+        lsSet('terminus_market_timeframe', timeframe);
+        set({ timeframe, candles: [], aggregatedCandles: [] });
+    },
 
     candles: [],
     setCandles: (incoming) => set((s) => {

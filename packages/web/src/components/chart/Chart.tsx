@@ -160,7 +160,12 @@ function ChartInner({
     // ── 2. Data Synchronization ──────────────────────────────────────────────
     useEffect(() => {
         if (!chart || !candleSeries || !lineSeries) return;
-        if (unique.length === 0) return;
+        if (unique.length === 0) {
+            candleSeries.setData([]);
+            lineSeries.setData([]);
+            updateIndicators(indicatorInstances, [], activeIndicators as Set<string>);
+            return;
+        }
 
         // Core Candle/Line Data
         const lineOn = activeIndicators.has('line_chart');
