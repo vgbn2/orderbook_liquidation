@@ -36,18 +36,19 @@ export function TerminalSummaryPanel() {
     const quantSnapshot = useMarketDataStore((s: any) => s.quantSnapshot);
     const options = useMarketDataStore((s: any) => s.options);
     const confluenceZones = useMarketDataStore((s: any) => s.confluenceZones);
+    const liquidations = useMarketDataStore((s: any) => s.liquidations);
     const lastPrice = useMarketDataStore((s: any) => s.lastPrice);
     const symbol = useCandleStore((s: any) => s.symbol);
 
     const computed = useMemo(() => {
         // Compute bias from sigma grid
-        const sigmaGrid = safe.arr(quantSnapshot?.sigmaGrid);
+        const sigmaGrid = safe.arr<any>(quantSnapshot?.sigmaGrid);
         let bias = null;
         if (sigmaGrid.length > 0) {
             const totalProb = sigmaGrid.reduce((s, r) => s + safe.num(r.probability), 0) || 1;
             const expectedMove = sigmaGrid.reduce((s, r) => s + (safe.num(r.pctMove) * safe.num(r.probability)) / totalProb, 0);
-            const bullWeight = sigmaGrid.filter((r: any) => safe.num(r.pctMove) >= 0).reduce((s, r) => s + safe.num(r.probability), 0);
-            const bearWeight = sigmaGrid.filter((r: any) => safe.num(r.pctMove) < 0).reduce((s, r) => s + safe.num(r.probability), 0);
+            const bullWeight = sigmaGrid.filter(r => safe.num(r.pctMove) >= 0).reduce((s, r) => s + safe.num(r.probability), 0);
+            const bearWeight = sigmaGrid.filter(r => safe.num(r.pctMove) < 0).reduce((s, r) => s + safe.num(r.probability), 0);
             const total = bullWeight + bearWeight || 1;
             const bullPct = (bullWeight / total) * 100;
             const bearPct = (bearWeight / total) * 100;
@@ -61,8 +62,17 @@ export function TerminalSummaryPanel() {
             ? classifyRegime(safe.num(meta.adjustedDrift), safe.num(meta.stepVolatility))
             : null;
 
-        // Simple liq ratio proxy
-        const liqRatio = 1.0; // TODO: derive from liquidationEngine once wired
+        // Derive liqRatio from live liquidation heatmap
+        let liqRatio = 1.0;
+        if (liquidations?.heatmap?.length > 0) {
+            let longs = 0;
+            let shorts = 0;
+            liquidations.heatmap.forEach((b: any) => {
+                longs += safe.num(b.long_liq_usd ?? (safe.num(b.total) * 0.5));
+                shorts += safe.num(b.short_liq_usd ?? (safe.num(b.total) * 0.5));
+            });
+            liqRatio = shorts / (longs || 1);
+        }
 
         // Options bias
         const totalGex = safe.num(options?.total_gex, NaN);
@@ -91,7 +101,7 @@ export function TerminalSummaryPanel() {
         const sortedAreas = areas.sort((a, b) => b.price - a.price);
 
         return { signal, bias, regime, priceAreas: sortedAreas, horizon: safe.num(meta.horizon, 14) };
-    }, [quantSnapshot, options, confluenceZones]);
+    }, [quantSnapshot, options, confluenceZones, liquidations]);
 
     // ── 2. EARLY RETURN AFTER HOOKS ──
     if (!quantSnapshot) {
@@ -148,12 +158,12 @@ export function TerminalSummaryPanel() {
                             <div className="stat-card" style={{ flex: 1 }}>
                                 <div className="stat-label">DRIFT (1D)</div>
                                 <div className={`stat-value ${safe.num(quantSnapshot?.meta?.adjustedDrift) > 0 ? 'pos' : 'neg'}`}>
-                                    {fmt.pct(safe.num(quantSnapshot?.meta?.adjustedDrift), '0.00%')}
+                                    {fmt.pct(safe.num(quantSnapshot?.meta?.adjustedDrift), 2)}
                                 </div>
                             </div>
                             <div className="stat-card" style={{ flex: 1 }}>
                                 <div className="stat-label">VOLATILITY</div>
-                                <div className="stat-value">{fmt.pct(safe.num(quantSnapshot?.meta?.stepVolatility), '0.00%')}</div>
+                                <div className="stat-value">{fmt.pct(safe.num(quantSnapshot?.meta?.stepVolatility), 2)}</div>
                             </div>
                         </div>
                     </div>
