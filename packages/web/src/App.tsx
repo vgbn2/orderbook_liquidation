@@ -13,6 +13,9 @@ import { Toolbar } from './components/chart/Toolbar.tsx';
 import { ToastContainer, NotifMutedBadge } from './components/shared/Toast.tsx';
 import { Orderbook } from './components/exchange/panels/Orderbook.tsx';
 import { useSettingsStore } from './stores/settingsStore';
+import { getCachedCandles, saveCandles, mergeGapCandles } from './lib/candleCache';
+import { startObservation, recordArrive, recordLeave } from './lib/usageProfile';
+import { startPrewarm } from './lib/preWarm';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useDrawings } from './components/chart/hooks/useDrawings.ts';
 import { FloatingReplayPanel } from './components/exchange/floating/FloatingReplayPanel.tsx';
@@ -106,27 +109,67 @@ export function App() {
 
     // Fetch historical candles from backend
     const fetchHistorical = useCallback(async (tf: string, sym: string) => {
+        // ── STEP 1: Check cache ──
+        const cached = await getCachedCandles(sym, tf);
+
+        // Show cached data immediately if available
+        if (cached.fromCache !== 'none' && !showAggregated) {
+            setCandles(cached.candles);
+            setLoading(false);
+            recordArrive(sym, tf);
+
+            if (!cached.stale) {
+                // Gap-fill background refresh
+                const sinceMs = cached.lastTime * 1000;
+                try {
+                    const res = await fetch(`/api/ohlcv?symbol=${sym}&interval=${tf}&since=${sinceMs}&limit=300`);
+                    if (res.ok) {
+                        const fresh = await res.json();
+                        if (fresh.length > 0) {
+                            const merged = await mergeGapCandles(sym, tf, fresh, cached.candles);
+                            setCandles(merged);
+                        }
+                    }
+                } catch (err) { /* silent gap-fill fail */ }
+                return;
+            }
+            // Fall through to full fetch if stale, but keep loading=false
+        } else {
+            setLoading(true);
+        }
+
         try {
             const endpoint = showAggregated ? '/api/ohlcv/aggregated' : '/api/ohlcv';
-            const res = await fetch(`${endpoint}?symbol=${sym}&interval=${tf}&limit=5000`);
+            const res = await fetch(`${endpoint}?symbol=${sym}&interval=${tf}&limit=2000`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             if (data.length > 0) {
                 if (showAggregated) setAggregatedCandles(data);
-                else setCandles(data);
+                else {
+                    setCandles(data);
+                    await saveCandles(sym, tf, data);
+                    recordArrive(sym, tf);
+                }
             }
             setLoading(false);
         } catch (err) {
             console.error('Failed to fetch OHLCV:', err);
-            // Retry after 3s
             setTimeout(() => fetchHistorical(tf, sym), 3000);
         }
-    }, [setCandles]);
+    }, [showAggregated]);
 
     // Fetch on mount and when timeframe changes
     useEffect(() => {
         fetchHistorical(timeframe, symbol);
     }, [timeframe, symbol, showAggregated, fetchHistorical]);
+
+    // ── Observation & Pre-warming ──
+    useEffect(() => {
+        startObservation((ranked) => {
+            console.log('Observation complete. Top combos:', ranked);
+            startPrewarm(ranked);
+        });
+    }, []);
 
     // ── Keyboard Shortcuts (Decentralized) ──
     useKeyboardShortcuts({

@@ -518,6 +518,38 @@ export class BinanceAdapter implements ExchangeAdapter {
             this.tradesReconnectTimer = setTimeout(() => this.connectTrades(), 5000);
         }
     }
+
+    /**
+     * Fetch klines after a given timestamp (gap-fill).
+     */
+    async fetchKlinesSince(
+        symbol = 'BTCUSDT',
+        interval = '1m',
+        sinceUnix: number,
+        limit = 500
+    ): Promise<Candle[]> {
+        try {
+            const startTime = sinceUnix * 1000;
+            const url = `${REST_BASE}/fapi/v1/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&startTime=${startTime}&limit=${limit}`;
+
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Binance REST ${res.status}`);
+
+            const data = await res.json() as unknown[][];
+            return data.map((k) => ({
+                time: Math.floor((k[0] as number) / 1000),
+                open: parseFloat(k[1] as string),
+                high: parseFloat(k[2] as string),
+                low: parseFloat(k[3] as string),
+                close: parseFloat(k[4] as string),
+                volume: parseFloat(k[5] as string),
+                exchange: 'binance' as Exchange,
+            }));
+        } catch (err) {
+            logger.error({ err, symbol, interval, sinceUnix }, 'Binance REST fetchKlinesSince failed');
+            return [];
+        }
+    }
 }
 
 export const binanceAdapter = new BinanceAdapter();
