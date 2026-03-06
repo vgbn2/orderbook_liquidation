@@ -21,3 +21,8 @@
 
 ## Phase 4: Performance & C++ Port (Future)
 **Goal**: Rewrite Quant Engine in C++ for ultra-low latency.
+
+## Phase 5: Gap Closure
+**Goal**: Address gaps from milestone audit
+- Fix timeframe switching medium
+
