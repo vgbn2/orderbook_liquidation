@@ -23,6 +23,7 @@ export function useWebSocket() {
     const pendingLiquidations = useRef<any>(null);
     const pendingConfluence = useRef<any>(null);
     const pendingQuant = useRef<any>(null);
+    const pendingIntelligence = useRef<any>(null);
 
     useEffect(() => {
         // 15 FPS Throttle
@@ -43,6 +44,10 @@ export function useWebSocket() {
             if (pendingQuant.current) {
                 state.setQuantSnapshot(pendingQuant.current);
                 pendingQuant.current = null;
+            }
+            if (pendingIntelligence.current) {
+                state.setIntelligenceSnapshot(pendingIntelligence.current);
+                pendingIntelligence.current = null;
             }
         }, 66);
         return () => clearInterval(flushInterval);
@@ -135,6 +140,7 @@ export function useWebSocket() {
                         'ict.sweep_confirmed',
                         `candles.binance.${symbol.toUpperCase()}.4h`,
                         `candles.binance.${symbol.toUpperCase()}.1d`,
+                        `signal.intelligence.${symbol.toUpperCase()}`,
                     ],
                 }));
             };
@@ -321,6 +327,10 @@ export function useWebSocket() {
                     case 'quant.analytics': // Fallback just in case
                         pendingQuant.current = msg.data;
                         break;
+                    case `signal.intelligence.${symbol.toUpperCase()}`:
+                    case 'signal.intelligence':
+                        pendingIntelligence.current = msg.data;
+                        break;
                     case 'ict.data':
                         setIctData(msg.data);
                         break;
@@ -404,7 +414,8 @@ export function useWebSocket() {
                 topics: [
                     newTopic,
                     newAggTopic,
-                    `quant.analytics.${symbol.toUpperCase()}`
+                    `quant.analytics.${symbol.toUpperCase()}`,
+                    `signal.intelligence.${symbol.toUpperCase()}`
                 ]
             }));
 

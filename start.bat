@@ -4,9 +4,7 @@ color 0A
 
 echo.
 echo            TERMINUS — Trading Intelligence Dashboard      
-echo                                                            
-echo    Orderbook · Options Flow · Liquidations · VWAF · GEX   
-echo  
+
 
 
 :: ── Check prerequisites ──────────────────────────────────────

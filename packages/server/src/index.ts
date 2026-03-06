@@ -16,6 +16,7 @@ import { startDeribit, stopDeribit } from './adapters/deribit.js';
 import { startHyperliquid, stopHyperliquid } from './adapters/hyperliquid.js';
 import { startBitget, stopBitget } from './adapters/bitget.js';
 import { startGateio, stopGateio } from './adapters/gateio.js';
+import { clerkPlugin } from '@clerk/fastify';
 import { ohlcvRoutes } from './routes/ohlcv.js';
 import { optionsEngine, generateSimulatedChain, generateSimulatedTrade } from './engines/analytics/options.js';
 import { liquidationEngine, generateSimulatedLiquidation, seedLiquidationHistory } from './engines/signals/liquidations.js';
@@ -86,7 +87,8 @@ async function start(): Promise<void> {
     await runMigrations();
 
     // ── Register routes ──────────────────────────
-    // await app.register(clerkPlugin);
+    // Auth
+    await app.register(clerkPlugin);
     await app.register(ohlcvRoutes);
     await app.register(userRoutes, { prefix: '/api/user' });
 
@@ -467,6 +469,7 @@ async function start(): Promise<void> {
 
                         orderbookEngine.clearAll();
                         orderbookEngine.setSymbol(normalized);
+                        signalIntelligenceEngine.switchSymbol(normalized);
 
                         stopBybit(oldSymbol);
                         stopOkx(oldSymbol);

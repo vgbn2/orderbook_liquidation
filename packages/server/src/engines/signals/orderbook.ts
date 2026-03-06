@@ -32,6 +32,20 @@ export class OrderbookEngine {
     private broadcastTimer: ReturnType<typeof setInterval> | null = null;
     private persistTimer: ReturnType<typeof setInterval> | null = null;
     private dirty = false;
+    private currentSymbol = 'BTCUSDT';
+
+    setSymbol(symbol: string): void {
+        this.currentSymbol = symbol;
+    }
+
+    /**
+     * Clear all book state (called on symbol switch).
+     */
+    clearAll(): void {
+        this.books.clear();
+        this.wallAgeMap.clear();
+        this.dirty = false;
+    }
 
     /**
      * Initialize an orderbook from a REST snapshot.
@@ -139,11 +153,12 @@ export class OrderbookEngine {
         return {
             time: Date.now(),
             exchange,
-            symbol: 'BTCUSDT',
+            symbol: this.currentSymbol,
             bids,
             asks,
         };
     }
+
 
     private wallAgeMap = new Map<number, number>(); // price -> ticks alive
 
@@ -252,7 +267,7 @@ export class OrderbookEngine {
         const snapshot: OrderbookSnapshot = {
             time: Date.now(),
             exchange: 'binance', // default output representation
-            symbol: 'BTCUSDT',
+            symbol: this.currentSymbol,
             bids,
             asks,
         };

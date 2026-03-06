@@ -106,7 +106,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     setOrderbookHeight: (valOrFn) => set(state => {
         const next = typeof valOrFn === 'function' ? valOrFn(state.orderbookHeight) : valOrFn;
         const validNext = isNaN(next) || next < 100 || next > 1000 ? 320 : next;
-        safeSet('term_right_w', String(validNext)); // FIX: was using wrong key 'term_right_w' for height
+        safeSet('term_orderbook_h', String(validNext));
         safeSet('term_orderbook_h', String(validNext));
         return { orderbookHeight: validNext };
     }),

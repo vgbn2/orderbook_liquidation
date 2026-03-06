@@ -41,10 +41,19 @@ export const fmt = {
     /**
      * Formats percentages with explicit sign and %.
      */
-    pct: (v: number | null | undefined, decimals = 2): string => {
+    pct: (v: number | string | null | undefined, decimals = 2): string => {
+        const n = typeof v === 'string' ? parseFloat(v) : v;
+        if (n == null || Number.isNaN(n)) return '---';
+        const sign = n > 0 ? '+' : '';
+        return `${sign}${n.toFixed(decimals)}%`;
+    },
+
+    /**
+     * Generic numeric formatter with decimals.
+     */
+    num: (v: number | null | undefined, decimals = 2): string => {
         if (v == null || Number.isNaN(v)) return '---';
-        const sign = v > 0 ? '+' : '';
-        return `${sign}${v.toFixed(decimals)}%`;
+        return v.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     }
 };
 
@@ -52,7 +61,7 @@ export const safe = {
     /**
      * Guarantees returning an array. Converts null/undefined to [].
      */
-    arr: <T>(v: any): T[] => {
+    arr: <T = any>(v: any): T[] => {
         return Array.isArray(v) ? v : [];
     },
 
@@ -62,5 +71,20 @@ export const safe = {
     num: (v: any, fallback = 0): number => {
         const parsed = typeof v === 'number' ? v : Number(v);
         return Number.isNaN(parsed) ? fallback : parsed;
+    },
+
+    /**
+     * Guarantees returning an object. Converts null/undefined/arrays to {}.
+     */
+    obj: <T = Record<string, any>>(v: any): T => {
+        return (v != null && typeof v === 'object' && !Array.isArray(v)) ? v : ({} as T);
+    },
+
+    /**
+     * Guarantees returning a string.
+     */
+    str: (v: any, fallback = ''): string => {
+        if (v == null) return fallback;
+        return String(v);
     }
 };

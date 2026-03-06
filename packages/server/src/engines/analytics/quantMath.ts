@@ -230,7 +230,7 @@ export function computeQuantAnalytics(symbol: string, prices: number[], dates: s
         const qPrice = currentPrice * Math.exp(logRet);
         quantiles[qLabels[i]] = {
             price: qPrice,
-            pctMove: Number(((qPrice / currentPrice) - 1) * 100).toFixed(2)
+            pctMove: Number(((qPrice / currentPrice) - 1) * 100)
         };
     }
 

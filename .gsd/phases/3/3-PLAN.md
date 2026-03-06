@@ -17,7 +17,7 @@ must_haves:
 <objective>
 Verify and formalize the Significant Liquidations (Whale Tracking) feature listed in Phase 3 of the roadmap.
 
-Purpose: Track liquidations > $10K in the global state to allow the UI to alert users or render a "Whale Feed" component.
+Purpose: Track liquidations > $1M in the global state to allow the UI to alert users or render a "Whale Feed" component.
 Output: Verification of existing implementation, or missing code added.
 </objective>
 

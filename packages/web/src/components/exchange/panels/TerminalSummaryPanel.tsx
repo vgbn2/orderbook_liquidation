@@ -12,7 +12,16 @@ function classifyRegime(drift: number, vol: number) {
 }
 
 // ── Signal grade from aggregate data ──────────────────────────
-function computeSignalGrade(bias: any, liqRatio: number, optionsBias: string | null) {
+function computeSignalGrade(bias: any, liqRatio: number, optionsBias: string | null, intelligence: any = null) {
+    if (intelligence) {
+        const score = safe.num(intelligence.overallScore);
+        if (score >= 6) return { grade: 'A', label: 'STRONG BUY', color: 'var(--positive)', bg: 'rgba(0,232,122,0.12)' };
+        if (score >= 2) return { grade: 'B', label: 'BUY', color: 'var(--positive)', bg: 'rgba(0,232,122,0.06)' };
+        if (score <= -6) return { grade: 'A', label: 'STRONG SELL', color: 'var(--negative)', bg: 'rgba(255,59,92,0.12)' };
+        if (score <= -2) return { grade: 'B', label: 'SELL', color: 'var(--negative)', bg: 'rgba(255,59,92,0.06)' };
+        return { grade: 'C', label: 'NEUTRAL', color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.03)' };
+    }
+
     let score = 0;
     if (bias) {
         if (bias.direction === 'BULLISH') score += bias.confidence > 15 ? 2 : 1;
@@ -38,6 +47,7 @@ export function TerminalSummaryPanel() {
     const liquidations = useMarketDataStore((s: any) => s.liquidations);
     const lastPrice = useMarketDataStore((s: any) => s.lastPrice);
     const symbol = useCandleStore((s: any) => s.symbol);
+    const intelligenceSnapshot = useMarketDataStore((s: any) => s.intelligenceSnapshot);
 
     const computed = useMemo(() => {
         // Compute bias from sigma grid
@@ -77,7 +87,7 @@ export function TerminalSummaryPanel() {
         const totalGex = safe.num(options?.total_gex, NaN);
         const optionsBias = !isNaN(totalGex) ? (totalGex > 0 ? 'CALL' : 'PUT') : null;
 
-        const signal = computeSignalGrade(bias, liqRatio, optionsBias);
+        const signal = computeSignalGrade(bias, liqRatio, optionsBias, intelligenceSnapshot);
 
         // Important price areas from quantiles + confluence
         const quantiles = safe.obj(quantSnapshot?.quantiles);
@@ -99,8 +109,8 @@ export function TerminalSummaryPanel() {
 
         const sortedAreas = areas.sort((a, b) => b.price - a.price);
 
-        return { signal, bias, regime, priceAreas: sortedAreas, horizon: safe.num(meta.horizon, 14) };
-    }, [quantSnapshot, options, confluenceZones, liquidations]);
+        return { signal, bias, regime, priceAreas: sortedAreas, horizon: safe.num(meta.horizon, 14), intelligence: intelligenceSnapshot };
+    }, [quantSnapshot, options, confluenceZones, liquidations, intelligenceSnapshot]);
 
     const { signal, bias, regime, priceAreas, horizon } = computed;
 

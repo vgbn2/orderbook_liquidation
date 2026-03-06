@@ -102,6 +102,9 @@ interface MarketDataState {
         timeframe: string | null;
     };
     setReplayConfig: (config: MarketDataState['replayConfig']) => void;
+    // Signal Intelligence
+    intelligenceSnapshot: any | null;
+    setIntelligenceSnapshot: (s: any) => void;
 
     // WebSocket send function (registered by useWebSocket)
     send: (msg: any) => void;
@@ -202,6 +205,8 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
         timeframe: null,
     },
     setReplayConfig: (config) => set({ replayConfig: config }),
+    intelligenceSnapshot: null,
+    setIntelligenceSnapshot: (s) => set({ intelligenceSnapshot: s }),
 
     send: () => { },
     setSend: (fn) => set({ send: fn }),

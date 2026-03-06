@@ -248,7 +248,6 @@ export class BinanceAdapter implements ExchangeAdapter {
             this.wsTrades.close(1000, 'Shutdown');
             this.wsTrades = null;
         }
-        orderbookEngine.stop();
         this.health = 'down';
         this.lastUpdateId = null;
         this.isResyncing = false;
