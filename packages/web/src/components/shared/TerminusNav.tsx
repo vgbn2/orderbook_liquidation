@@ -5,6 +5,7 @@ import { useMarketDataStore } from "../../stores/marketDataStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { SettingsPopover } from "./SettingsPopover.tsx";
 import { showToast } from "./Toast.tsx";
+import { supportsPanel, PanelId } from "../../utils/capabilityMap";
 
 
 // ─── DATA ─────────────────────────────────────────────────────
@@ -241,6 +242,7 @@ function TickerStrip({ markets, onSelect, active }: { markets: any[], onSelect: 
 // ─── DROPDOWN ─────────────────────────────────────────────────
 function Dropdown({ item }: { item: any }) {
     const setView = useSettingsStore(s => s.setView);
+    const symbol = useCandleStore(s => s.symbol);
     if (!item.dropdown) return null;
     const { sections } = item.dropdown;
 
@@ -267,68 +269,84 @@ function Dropdown({ item }: { item: any }) {
                         {section.title}
                     </div>
 
-                    {section.items.map((it: any, ii: number) => (
-                        <button
-                            key={ii}
-                            className="dd-item"
-                            onClick={() => {
-                                if (it.label === 'Alert Manager') {
-                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_ALERTS'));
-                                } else if (it.label === 'Market Replay' || it.label === 'Replay') {
-                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_REPLAY'));
-                                } else if (it.label === 'Clusters') {
-                                    window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'liq_clusters' } }));
-                                } else if (it.label === 'Resting Liq') {
-                                    window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'resting_liq' } }));
-                                } else if (it.label === 'Macro Quant') {
-                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_QUANT'));
-                                } else if (it.label === 'Liquidation') {
-                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_LIQUIDATION'));
-                                } else if (it.label === 'Options · GEX') {
-                                    window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_OPTIONS'));
-                                } else if (['Backtest', 'Paper Trade', 'Optimize', 'Equity Curve', 'Trade Log', 'Drawdown', 'Heatmap'].includes(it.label)) {
-                                    setView('backtest');
-                                } else if (it.label !== "Settings") {
-                                    showToast(`Navigating to ${it.label}...`, 'info', 'system', true);
-                                }
-                            }}
-                            style={{
-                                display: "flex", alignItems: "flex-start", gap: 10,
-                                padding: "8px 16px", width: "100%",
-                                background: "transparent", border: "none",
-                                cursor: "pointer", textAlign: "left",
-                                transition: "background 0.1s",
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
-                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                        >
-                            {/* Icon */}
-                            <span style={{
-                                width: 28, height: 28, borderRadius: "var(--r-md)", flexShrink: 0,
-                                background: "var(--bg-raised)",
-                                border: "1px solid var(--border-medium)",
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 13, color: "var(--text-secondary)",
-                            }}>
-                                {it.icon}
-                            </span>
+                    {section.items.map((it: any, ii: number) => {
+                        const labelToPanel: Record<string, PanelId> = {
+                            'Macro Quant': 'quant',
+                            'Liquidation': 'liquidation',
+                            'Options · GEX': 'options',
+                        };
+                        const panelId = labelToPanel[it.label];
+                        const isDisabled = panelId ? !supportsPanel(symbol, panelId) : false;
 
-                            {/* Text */}
-                            <div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                    <span style={{
-                                        fontSize: "var(--text-md)", fontWeight: "bold", color: "var(--text-primary)",
-                                    }}>
-                                        {it.label}
-                                    </span>
-                                    {it.badge && badge(it.badge)}
+                        return (
+                            <button
+                                key={ii}
+                                className="dd-item"
+                                onClick={() => {
+                                    if (isDisabled) {
+                                        showToast(`${it.label} is not supported for this asset class.`, 'error');
+                                        return;
+                                    }
+                                    if (it.label === 'Alert Manager') {
+                                        window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_ALERTS'));
+                                    } else if (it.label === 'Market Replay' || it.label === 'Replay') {
+                                        window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_REPLAY'));
+                                    } else if (it.label === 'Clusters') {
+                                        window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'liq_clusters' } }));
+                                    } else if (it.label === 'Resting Liq') {
+                                        window.dispatchEvent(new CustomEvent('TERMINUS_TOGGLE_INDICATOR', { detail: { indicator: 'resting_liq' } }));
+                                    } else if (it.label === 'Macro Quant') {
+                                        window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_QUANT'));
+                                    } else if (it.label === 'Liquidation') {
+                                        window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_LIQUIDATION'));
+                                    } else if (it.label === 'Options · GEX') {
+                                        window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_OPTIONS'));
+                                    } else if (['Backtest', 'Paper Trade', 'Optimize', 'Equity Curve', 'Trade Log', 'Drawdown', 'Heatmap'].includes(it.label)) {
+                                        setView('backtest');
+                                    } else if (it.label !== "Settings") {
+                                        showToast(`Navigating to ${it.label}...`, 'info', 'system', true);
+                                    }
+                                }}
+                                style={{
+                                    display: "flex", alignItems: "flex-start", gap: 10,
+                                    padding: "8px 16px", width: "100%",
+                                    background: "transparent", border: "none",
+                                    cursor: isDisabled ? "not-allowed" : "pointer", textAlign: "left",
+                                    transition: "background 0.1s",
+                                    opacity: isDisabled ? 0.4 : 1,
+                                }}
+                                disabled={isDisabled}
+                                onMouseEnter={e => { if (!isDisabled) e.currentTarget.style.background = "rgba(255,255,255,0.05)" }}
+                                onMouseLeave={e => { if (!isDisabled) e.currentTarget.style.background = "transparent" }}
+                            >
+                                {/* Icon */}
+                                <span style={{
+                                    width: 28, height: 28, borderRadius: "var(--r-md)", flexShrink: 0,
+                                    background: "var(--bg-raised)",
+                                    border: "1px solid var(--border-medium)",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    fontSize: 13, color: "var(--text-secondary)",
+                                }}>
+                                    {it.icon}
+                                </span>
+
+                                {/* Text */}
+                                <div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                        <span style={{
+                                            fontSize: "var(--text-md)", fontWeight: "bold", color: "var(--text-primary)",
+                                        }}>
+                                            {it.label}
+                                        </span>
+                                        {it.badge && badge(it.badge)}
+                                    </div>
+                                    <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: 2, lineHeight: 1.4 }}>
+                                        {it.desc}
+                                    </div>
                                 </div>
-                                <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: 2, lineHeight: 1.4 }}>
-                                    {it.desc}
-                                </div>
-                            </div>
-                        </button>
-                    ))}
+                            </button>
+                        );
+                    })}
                 </div>
             ))}
         </div>
