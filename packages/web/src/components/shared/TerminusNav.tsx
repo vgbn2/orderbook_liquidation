@@ -39,34 +39,7 @@ const NAV_ITEMS = [
             ]
         },
     },
-    {
-        label: "Trade",
-        href: "#",
-        dropdown: {
-            sections: [
-                {
-                    title: "Spot & Margin",
-                    items: [
-                        { icon: "◈", label: "Spot", desc: "Trade crypto freely", badge: null },
-                        { icon: "⟠", label: "Margin", desc: "Magnify profit with leverage", badge: null },
-                        { icon: "⇌", label: "Convert", desc: "Swap any pair, zero slippage", badge: "0 Fee" },
-                        { icon: "⊞", label: "ETF", desc: "Leveraged exposure simplified", badge: null },
-                        { icon: "◐", label: "Pre-Market", desc: "Trade tokens before listing", badge: "New" },
-                    ],
-                },
-                {
-                    title: "Advanced",
-                    items: [
-                        { icon: "⬡", label: "Futures", desc: "USDT-settled perpetuals", badge: null },
-                        { icon: "⊛", label: "Options", desc: "European-style vanilla options", badge: "Hot" },
-                        { icon: "⟳", label: "Bots", desc: "Auto-running smart strategies", badge: null },
-                        { icon: "⊕", label: "Copy Trade", desc: "Mirror expert traders", badge: null },
-                        { icon: "◎", label: "Paper Trade", desc: "Risk-free simulation mode", badge: "Beta" },
-                    ],
-                },
-            ],
-        },
-    },
+
     {
         label: "Indicators",
         href: "#",

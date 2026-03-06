@@ -384,8 +384,7 @@ async function start(): Promise<void> {
                         `ict.data.${globalSymbol}.1h`,
                         `ict.data.${globalSymbol}.4h`,
                         `ict.data.${globalSymbol}.1d`,
-                        'liquidations.heatmap',
-                        'quant.analytics'
+                        'liquidations.heatmap'
                     ] as const;
 
                     for (const topic of topics) {
@@ -393,6 +392,16 @@ async function start(): Promise<void> {
                         if (cached) {
                             clientHub.sendToClient(clientId, topic as any, JSON.parse(cached));
                         }
+                    }
+
+                    // Send quant snapshot correctly
+                    const quantCached = await redis.get(`quant:analytics:${globalSymbol}`);
+                    if (quantCached) {
+                        clientHub.sendToClient(
+                            clientId,
+                            `quant.analytics.${globalSymbol}` as any,
+                            JSON.parse(quantCached)
+                        );
                     }
 
                     // Send HTF candles specially

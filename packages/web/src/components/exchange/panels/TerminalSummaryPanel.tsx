@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { useMarketDataStore } from '../../../stores/marketDataStore';
 import { useCandleStore } from '../../../stores/candleStore';
 import { fmt, safe } from '../../../utils/safe';
-import { PanelSkeleton } from '../../shared/PanelSkeleton';
 
 // ── Regime classifier ─────────────────────────────────────────
 function classifyRegime(drift: number, vol: number) {
@@ -103,11 +102,6 @@ export function TerminalSummaryPanel() {
         return { signal, bias, regime, priceAreas: sortedAreas, horizon: safe.num(meta.horizon, 14) };
     }, [quantSnapshot, options, confluenceZones, liquidations]);
 
-    // ── 2. EARLY RETURN AFTER HOOKS ──
-    if (!quantSnapshot) {
-        return <PanelSkeleton label="TERMINAL SUMMARY" />;
-    }
-
     const { signal, bias, regime, priceAreas, horizon } = computed;
 
     // ── 3. RENDER ──
@@ -133,10 +127,14 @@ export function TerminalSummaryPanel() {
                             <div style={{ fontSize: '13px', fontWeight: 800, color: signal.color, letterSpacing: '1px' }}>
                                 {signal.label}
                             </div>
-                            {bias && (
+                            {bias ? (
                                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
                                     EXP MOVE: <span style={{ color: signal.color }}>{fmt.pct(bias.expectedMove)}</span>
                                     &nbsp;|&nbsp; CONF: {fmt.num(bias.confidence, 0)}%
+                                </div>
+                            ) : (
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                    AWAITING ENGINE...
                                 </div>
                             )}
                         </div>

@@ -122,6 +122,11 @@ class QuantEngine {
             // Persist to Redis
             await redis.set(`quant:analytics:${symbol}`, JSON.stringify(snapshot), 'EX', 7200); // 2hr TTL
 
+            // Also write dot-notation key so initial snapshot send works as fallback
+            if (this.activeSymbol === symbol) {
+                await redis.set('quant.analytics', JSON.stringify(snapshot), 'EX', 7200);
+            }
+
             // Always broadcast on topic namespaced by symbol
             clientHub.broadcast(`quant.analytics.${symbol}` as any, snapshot);
 
