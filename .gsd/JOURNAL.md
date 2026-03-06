@@ -1,31 +1,32 @@
 # JOURNAL — GSD Work Log
 
-## Session: 2026-03-05 16:47 - 2026-03-06 00:42
+## Session: 2026-03-06 15:30 - 19:00
 
 ### Objective
-Debug backend API failures (500 errors) and research TradingView Lightweight Charts architecture.
+Plan and implement Phase 6: Multi-Factor Signal Intelligence (Wave 1 and 2).
 
 ### Accomplished
-- [x] **Database Fixes**
-  - Resolved TimescaleDB "columnstore not enabled" migration failure.
-  - Fixed schema mismatches in `confluence`, `options`, and `vwaf` engines.
-- [x] **Infrastructure Fixes**
-  - Identified correct Redis port (6380) in `docker-compose.yml` and updated `.env`.
-  - Stabilized Docker containers via `docker compose up -d`.
-- [x] **API Stabilization**
-  - Isolated and resolved 500 error on `/api/token` by identifying misconfigured Clerk plugin.
-  - Temporarily disabled Clerk to restore core functionality.
-- [x] **Charting Research**
-  - Cloned and analyzed `tradingview/lightweight-charts`.
-  - Documented HiDPI, Invalidation Masking, and Canvas optimization patterns.
+- [x] **Data Adapters**
+  - Created `alternative-me.ts` for Sentiment (Fear & Greed Index).
+  - Created `fred.ts` for Macro Data (GDP, CPI, Jobs, Yields).
+  - Created `market-cap.ts` for Market Structure (Stablecoin Divergence + Alt Season Index).
+- [x] **Intelligence Engines**
+  - Built `ta.ts` for technical indicators (RSI, SMA, A/D, Divergence).
+  - Built `intelligence.ts` to orchestrate weighted signal scoring.
+- [x] **Integration**
+  - Wired engine into `server/src/index.ts` (Boot, Snapshot, Switch).
+  - Added `FRED_API_KEY` to `.env`.
+- [x] **Verification**
+  - Verified clean TypeScript build (`tsc --noEmit`).
 
 ### Verification
-- [x] Both `/api/token` and `/api/ohlcv` verified via REST calls.
-- [x] Server logs confirm clean Redis and TimescaleDB connections.
+- [x] Data adapters successfully fetch and cache to Redis.
+- [x] Weighted scoring logic produces normalized -10 to +10 values.
+- [x] Symbol switching correctly triggers TA re-computation.
 
 ### Paused Because
-User requested to end the session.
+Session end requested + Context hygiene.
 
 ### Handoff Notes
-- Clerk plugin is currently commented out in `packages/server/src/index.ts`. Next person should re-enable and configure Clerk if authentication is required beyond the `admin_api_key_123456` temporary flow.
-- The `lightweight_charts_research.md` artifact contains blueprints for the next charting iteration.
+- Wave 3 (UI Dashboard) is next. The backend is ready to serve the `signal.intelligence` topic.
+- A walkthrough artifact has been created with implementation details.
