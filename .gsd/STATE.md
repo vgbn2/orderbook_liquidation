@@ -1,8 +1,8 @@
 # STATE — GSD Session State
 
-**Status**: Paused (finished 2026-03-06)
-**Phase**: Core Features & Algorithms / Bug Squashing
-**Current Task**: Bug Fixes Complete — Ready for Phase 4
+**Status**: Complete (finished 2026-03-06)
+**Phase**: Phase 6: Multi-Factor Signal Intelligence
+**Current Task**: All Phase 6 Waves Complete (Adapters, Engine, UI Integration)
 
 ---
 
@@ -21,24 +21,25 @@
 ---
 
 ## Current Position
-- **Phase**: Phase 6: Multi-Factor Signal Intelligence
-- **Task**: Wave 1 & 2 Complete (Adapters & Engine)
-- **Status**: Paused at 2026-03-06
+- **Phase**: Phase 6 Complete
+- **Task**: Final UI Integration (Wave 3) Complete
+- **Status**: Finished at 2026-03-06
 
 ## Last Session Summary
-- Implemented **Signal Intelligence Engine** (Wave 1 & 2).
-- Created adapters for **Alternative.me (Fear & Greed)**, **FRED (Economic Data)**, and **Market Cap (DefiLlama/CoinGecko)**.
-- Built **TA Engine** with RSI, SMA alignment, A/D volume, and Divergence detection.
-- Aggregated all signals into a weighted **-10 to +10 EdgeFinder Score**.
-- Wired the engine into `index.ts` boot sequence and symbol switching.
-- Verified build is healthy (`tsc --noEmit` passed).
-- Added `FRED_API_KEY` to `.env` and `.env.example`.
+- Implemented **Signal Intelligence Engine** (Adapters, Engine, UI).
+- Created adapters for **Alternative.me**, **FRED**, and **Market Cap**.
+- Built **TA Engine** with RSI, SMA alignment, and Divergence detection.
+- Aggregated all signals into a weighted **EdgeFinder Score**.
+- Integrated **EdgeFinder** into `TerminalSummaryPanel.tsx`.
+- Wired WebSocket subscriptions for live intelligence updates.
+- Fixed critical runtime crashes in `quantMath.ts` and `orderbook.ts`.
+- Fixed `settingsStore.ts` key mismatch for orderbook height.
 
 ## In-Progress Work
 - UI integration (Wave 3) is pending.
 - Organizing parent `CODEPTIT` folder.
 
 ## Next Steps
-1. Update `TerminalSummaryPanel.tsx` to display the EdgeFinder score.
-2. Build the Multi-Symbol Dashboard (EdgeFinder).
-3. Finalize Wave 3 UI tasks.
+1. Build the Multi-Symbol Dashboard (EdgeFinder).
+2. Refine grade thresholds based on backtesting.
+3. Start Phase 4 (C++ Porting).

@@ -32,7 +32,8 @@
 ## Phase 6: Multi-Factor Signal Intelligence
 **Goal**: Implement high-intelligence buy/sell signals.
 - Research Sentiment & Macro data (Completed)
-- Implement Fear & Greed / AAII scraper
-- Implement FRED API integration
-- Implement RSI, SMA (20, 50, 100) and Volume Distribution logic
-- Build Multi-factor Decision Engine (Decision Grade)
+- Implement Fear & Greed / AAII scraper (Completed)
+- Implement FRED API integration (Completed)
+- Implement RSI, SMA (20, 50, 100) and Volume Distribution logic (Completed)
+- Build Multi-factor Decision Engine (Decision Grade) (Completed)
+- Bridge EdgeFinder to TerminalSummaryPanel UI (Completed)
