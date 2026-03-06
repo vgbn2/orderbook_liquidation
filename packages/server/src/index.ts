@@ -23,8 +23,10 @@ import { vwafEngine, generateSimulatedFunding } from './engines/analytics/vwaf.j
 import { confluenceEngine } from './engines/signals/confluence.js';
 import { ictEngine } from './engines/signals/ict.js';
 import { alertsEngine } from './engines/signals/alerts.js';
+import { orderbookEngine } from './engines/signals/orderbook.js';
 import { replayEngine } from './engines/core/replay.js';
 import { quantEngine } from './engines/analytics/quant.js';
+import { signalIntelligenceEngine } from './engines/signals/intelligence.js';
 // import { clerkPlugin } from '@clerk/fastify';
 import { userRoutes } from './routes/user.js';
 
@@ -179,6 +181,9 @@ async function start(): Promise<void> {
 
     // Start Quant Engine (macro analysis — runs every 1hr)
     quantEngine.start();
+
+    // Start Signal Intelligence Engine (sentiment, macro, TA — background)
+    signalIntelligenceEngine.start(globalSymbol);
 
     // ── Options engine (simulated in dev, Deribit in prod) ──
     const latestPrice = initialCandles.length > 0
@@ -404,6 +409,12 @@ async function start(): Promise<void> {
                         );
                     }
 
+                    // Send intelligence snapshot
+                    const intelCached = await redis.get(`signal:intelligence:${globalSymbol}`);
+                    if (intelCached) {
+                        clientHub.sendToClient(clientId, 'signal.intelligence' as any, JSON.parse(intelCached));
+                    }
+
                     // Send HTF candles specially
                     for (const tf of ['4h', '1d'] as const) {
                         const htfStr = await redis.get(`candles:${globalSymbol}:${tf}`);
@@ -454,6 +465,9 @@ async function start(): Promise<void> {
                         globalSymbol = normalized;
                         logger.info(`Switching global market to ${globalSymbol}`);
 
+                        orderbookEngine.clearAll();
+                        orderbookEngine.setSymbol(normalized);
+
                         stopBybit(oldSymbol);
                         stopOkx(oldSymbol);
                         stopDeribit(oldSymbol);
@@ -471,6 +485,7 @@ async function start(): Promise<void> {
                         startGateio(globalSymbol);
 
                         quantEngine.switchSymbol(globalSymbol);
+                        signalIntelligenceEngine.switchSymbol(globalSymbol);
 
                         binanceAdapter.switchSymbol(globalSymbol).then(() => {
                             binanceAdapter.fetchKlines(globalSymbol, '1m', 500).then(candles => {

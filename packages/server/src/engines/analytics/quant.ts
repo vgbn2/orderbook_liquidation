@@ -47,7 +47,7 @@ class QuantEngine {
     private timer: ReturnType<typeof setInterval> | null = null;
 
     // Default list of macro assets used for drag calculation
-    private readonly MACRO_ASSETS = ['DX-Y.NYB', '^TNX', '^GSPC'];
+    private readonly MACRO_ASSETS = ['DX-Y.NYB', '^TNX', '^GSPC', '^IXIC', 'GC=F', 'CL=F'];
 
     getLastSnapshot(symbol?: string): QuantSnapshot | null {
         return this.cache.get(symbol || this.activeSymbol) || null;

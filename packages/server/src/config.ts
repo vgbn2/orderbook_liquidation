@@ -24,6 +24,7 @@ const envSchema = z.object({
     DERIBIT_CLIENT_ID: z.string().optional(),
     DERIBIT_CLIENT_SECRET: z.string().optional(),
     COINGLASS_API_KEY: z.string().optional(),
+    FRED_API_KEY: z.string().optional(),
 
     // Feature flags
     ENABLE_BINANCE: z.coerce.boolean().default(true),
