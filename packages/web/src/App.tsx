@@ -163,13 +163,19 @@ export function App() {
         fetchHistorical(timeframe, symbol);
     }, [timeframe, symbol, showAggregated, fetchHistorical]);
 
-    // ── Observation & Pre-warming ──
+    // ── Pre-warming & Usage Tracking ──
     useEffect(() => {
         startObservation((ranked) => {
             console.log('Observation complete. Top combos:', ranked);
             startPrewarm(ranked);
         });
     }, []);
+
+    useEffect(() => {
+        return () => {
+            recordLeave(symbol, timeframe);
+        };
+    }, [symbol, timeframe]);
 
     // ── Keyboard Shortcuts (Decentralized) ──
     useKeyboardShortcuts({
