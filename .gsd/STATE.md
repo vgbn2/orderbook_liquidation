@@ -1,45 +1,30 @@
-# STATE — GSD Session State
-
-**Status**: Complete (finished 2026-03-06)
-**Phase**: Phase 6: Multi-Factor Signal Intelligence
-**Current Task**: All Phase 6 Waves Complete (Adapters, Engine, UI Integration)
-
----
-
-## Completed
-- [x] **Core System Fixes**
-  - [x] Fixed code-breaking Redis key mismatch (`quant:analytics` vs `quant.analytics`).
-  - [x] Added `safe.str` and `safe.obj` to `packages/web/src/utils/safe.ts`.
-  - [x] Fixed Quant Math data type mismatch (Removed server-side `.toFixed`).
-  - [x] Fixed Orderbook Symbol Switching state corruption and hardcoded symbols.
-  - [x] Removed unused "Trade" menu from navigation.
-  - [x] Fixed Terminal Summary Panel blank screen state.
-- [x] **Infrastructure Stability**
-  - TimescaleDB migration fixed (`columnstore` error).
-  - Redis connection fixed (port 6380 mapping restored).
-
----
-
 ## Current Position
-- **Phase**: Phase 6 Complete
-- **Task**: Final UI Integration (Wave 3) Complete
-- **Status**: Finished at 2026-03-06
+- **Phase**: 4 - C++ Quant Engine Port
+- **Task**: Wave 1: Infrastructure & Math Integration [IN PROGRESS]
+- **Status**: Paused at 2026-03-06 22:57 (Local Time)
 
 ## Last Session Summary
-- Implemented **Signal Intelligence Engine** (Adapters, Engine, UI).
-- Created adapters for **Alternative.me**, **FRED**, and **Market Cap**.
-- Built **TA Engine** with RSI, SMA alignment, and Divergence detection.
-- Aggregated all signals into a weighted **EdgeFinder Score**.
-- Integrated **EdgeFinder** into `TerminalSummaryPanel.tsx`.
-- Wired WebSocket subscriptions for live intelligence updates.
-- Fixed critical runtime crashes in `quantMath.ts` and `orderbook.ts`.
-- Fixed `settingsStore.ts` key mismatch for orderbook height.
+Resumed the project and identified Phase 4 as the next priority. Researched and documented the "Desync Detected" error. Successfully fixed a UI bug in `TerminalSummaryPanel.tsx` where confluence price levels were displaying as `$0.00000`. Implemented the new consolidated `terminus_core.cpp` native addon and updated build configurations.
 
 ## In-Progress Work
-- UI integration (Wave 3) is pending.
-- Organizing parent `CODEPTIT` folder.
+- **Native Consolidation**: `terminus_core.cpp` is written, but not yet compiled.
+- **UI Progress**: Confluence zone property mismatch fixed and verified (visual only).
+- **Files modified**:
+  - `packages/server/native/terminus_core.cpp` (NEW)
+  - `packages/server/binding.gyp` (MODIFIED)
+  - `packages/server/package.json` (MODIFIED: added `build:native`)
+  - `packages/web/src/components/exchange/panels/TerminalSummaryPanel.tsx` (MODIFIED: fixed zero price bug)
+
+## Blockers
+- **Build Environment**: `node-gyp` is failing to find the Visual Studio C++ workload despite the user installing it. Likely requires a shell restart or `PATH` verification.
+
+## Context Dump
+- **Desync Error**: Root cause is a sequence gap detection in WS adapters. It's a feature, not a bug, but native port will help bridge the performance gap causing drops.
+- **UI Bug**: Confluence engine uses `.center` for price, while UI was looking for `.price`. Fixed.
+- **Native Strategy**: Move all math and orderbook logic into a single high-performance `terminus_core` module.
 
 ## Next Steps
-1. Build the Multi-Symbol Dashboard (EdgeFinder).
-2. Refine grade thresholds based on backtesting.
-3. Start Phase 4 (C++ Porting).
+1. **Fix Build**: Run `vswhere` or check `VCINSTALLDIR` to confirm VS is visible to the shell.
+2. **Compile**: Successfully run `npm run build:native`.
+3. **Verify Math**: Ensure `kalman1D` and Gaussian exports work via `native-bridge.ts`.
+4. **Wave 2**: Begin C++ Orderbook core implementation.
