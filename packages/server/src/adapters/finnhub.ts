@@ -1,3 +1,4 @@
+import { logger } from '../logger.js';
 import axios from 'axios';
 
 // ── Mapping Finnhub Event Names to FRED IDs ──────────────────
@@ -37,21 +38,28 @@ class FinnhubAdapter {
     private apiKey = process.env.FINNHUB_API_KEY;
     private cache: Map<string, FinnhubForecast> = new Map();
     private lastFetch = 0;
+    private throttledUntil = 0;
 
     async fetchForecasts(): Promise<Map<string, FinnhubForecast>> {
         if (!this.apiKey) return new Map();
 
-        // Cache for 1 hour
-        if (Date.now() - this.lastFetch < 3600000 && this.cache.size > 0) {
+        const now = Date.now();
+
+        // 1. Check Cooldown (Rate Limit Protection)
+        if (now < this.throttledUntil) {
+            return this.cache;
+        }
+
+        // 2. Check Cache (1 hour)
+        if (now - this.lastFetch < 3600000 && this.cache.size > 0) {
             return this.cache;
         }
 
         try {
-            const now = new Date();
-            const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // last 30 days
-            const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // next 7 days
+            const startDate = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const endDate = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-            const url = `https://finnhub.io/api/v1/economic-calendar?from=${start}&to=${end}&token=${this.apiKey}`;
+            const url = `https://finnhub.io/api/v1/economic-calendar?from=${startDate}&to=${endDate}&token=${this.apiKey}`;
             const res = await axios.get(url);
 
             if (res.data) {
@@ -79,15 +87,21 @@ class FinnhubAdapter {
                 });
 
                 this.cache = results;
-                this.lastFetch = Date.now();
+                this.lastFetch = now;
                 return results;
             }
-        } catch (err) {
-            console.error('Finnhub fetch error:', err);
+        } catch (err: any) {
+            if (err.response?.status === 429) {
+                logger.warn({ retryAfter: 300 }, 'Finnhub Rate Limit Hit — Cooldown active for 5m');
+                this.throttledUntil = now + 5 * 60 * 1000;
+            } else {
+                logger.error({ err: err.message }, 'Finnhub fetch error');
+            }
         }
 
         return this.cache;
     }
+
 
     getForecast(seriesId: string): FinnhubForecast | null {
         return this.cache.get(seriesId) || null;

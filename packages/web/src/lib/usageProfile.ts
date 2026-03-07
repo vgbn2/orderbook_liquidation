@@ -15,7 +15,7 @@ export interface ActiveVisit {
 
 const LS_USAGE_PROFILE = 'terminus_usage_profile';
 const OBSERVATION_WINDOW_MS = 5 * 60 * 1000;
-const MIN_SCORE_THRESHOLD = 0.5;
+const MIN_SCORE_THRESHOLD = 0.2;
 const PREWARM_TOP_N = 5;
 
 let activeVisit: ActiveVisit | null = null;
@@ -37,7 +37,7 @@ export function recordArrive(symbol: string, timeframe: string): void {
 }
 
 export function recordLeave(symbol: string, timeframe: string): void {
-    if (!activeVisit || symbol !== activeVisit.symbol) return;
+    if (!activeVisit || symbol !== activeVisit.symbol || timeframe !== activeVisit.timeframe) return;
 
     const dwellSec = (Date.now() - activeVisit.arrivedAt) / 1000;
     if (dwellSec < 3) {

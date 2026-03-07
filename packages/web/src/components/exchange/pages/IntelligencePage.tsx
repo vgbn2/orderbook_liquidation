@@ -159,7 +159,7 @@ export const IntelligencePage: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {intel?.fred?.indicators?.map(ind => (
+                            {intel?.fred?.indicators?.map((ind: any) => (
                                 <tr key={ind.seriesId} style={{ borderBottom: '1px solid var(--border-low)' }}>
                                     <td style={{ padding: '8px 4px', fontWeight: 600 }}>{ind.label}</td>
                                     <td style={{ padding: '8px 4px' }}>{ind.value}</td>
@@ -180,7 +180,7 @@ export const IntelligencePage: React.FC = () => {
                                             background: ind.bias === 'bullish' ? 'var(--bg-positive)' : ind.bias === 'bearish' ? 'var(--bg-negative)' : 'var(--bg-deep)',
                                             color: ind.bias === 'bullish' ? 'var(--positive)' : ind.bias === 'bearish' ? 'var(--negative)' : 'var(--text-muted)'
                                         }}>
-                                            {ind.bias.toUpperCase()}
+                                            {ind.bias?.toUpperCase() || '--'}
                                         </span>
                                     </td>
                                 </tr>
@@ -216,7 +216,7 @@ export const IntelligencePage: React.FC = () => {
                             <div>
                                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px' }}>HOT ZONES</div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                    {intel.geopolitics.hotZones.map(zone => (
+                                    {intel.geopolitics.hotZones.map((zone: string) => (
                                         <span key={zone} style={{ padding: '2px 8px', background: 'var(--bg-deep)', border: '1px solid var(--border-medium)', borderRadius: '4px', fontSize: '9px' }}>
                                             {zone}
                                         </span>
@@ -236,7 +236,7 @@ export const IntelligencePage: React.FC = () => {
                         <StatCard label="AD Trend" value={intel?.ta?.adTrend || '--'} />
                         <StatCard label="Structure" value={intel?.ta?.marketStructure || '--'} />
                         <StatCard label="Divergence" value={intel?.ta?.divergence?.type || 'NONE'} />
-                        <StatCard label="TA Score" value={intel?.categories?.find((c: any) => c.name === 'Technical')?.score?.toFixed(1) ?? '0.0'} />
+                        <StatCard label="TA Score" value={intel?.categories?.find((c: any) => c.name === 'Technical')?.score !== undefined ? intel.categories.find((c: any) => c.name === 'Technical').score.toFixed(1) : '0.0'} />
                     </div>
                 </div>
 

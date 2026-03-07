@@ -58,3 +58,10 @@
 - Fix initial partial implementation syntax errors (Completed)
 - Integrate fetchHistorical cache-first logic in App.tsx (Completed)
 - Verify end-to-end caching behavior (Completed)
+
+## Phase 8: System Hardening & Optimization
+**Goal**: Improve operational stability and database performance.
+- [ ] Implement database batching for snapshot engines (Planned)
+- [ ] Rescale Signal Intelligence for API rate-limits (Planned)
+- [ ] Fix start script port reporting and environment consistency (Planned)
+

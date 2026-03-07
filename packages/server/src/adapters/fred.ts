@@ -194,7 +194,7 @@ class FredAdapter {
                 return this.lastSnapshot;
             }
 
-            const seriesConfig: Array<{ id: string; label: string; category: FredIndicator['category'] }> = [
+            const seriesConfig: Array<{ id: string; label: string; category: FredIndicator['category']; units?: string }> = [
                 { id: FRED_SERIES_MAP.NFP, label: 'Non-Farm Payrolls', category: 'jobs' },
                 { id: FRED_SERIES_MAP.ADP, label: 'ADP Employment', category: 'jobs' },
                 { id: FRED_SERIES_MAP.UNEMPLOYMENT, label: 'Unemployment Rate', category: 'jobs' },
@@ -232,7 +232,9 @@ class FredAdapter {
                             : 0;
 
                         const fcst = forecasts.get(s.id);
-                        let surpriseInfo = { surprise: null, score: null, grade: null as FredIndicator['surpriseGrade'] };
+                        let surpriseInfo: { surprise: number | null; score: number | null; grade: FredIndicator['surpriseGrade'] } = {
+                            surprise: null, score: null, grade: null
+                        };
 
                         if (fcst && fcst.estimate !== null) {
                             surpriseInfo = computeSurprise(s.id, data.value, fcst.estimate);

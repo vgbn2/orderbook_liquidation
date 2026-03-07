@@ -28,6 +28,8 @@ import { orderbookEngine } from './engines/signals/orderbook.js';
 import { replayEngine } from './engines/core/replay.js';
 import { quantEngine } from './engines/analytics/quant.js';
 import { signalIntelligenceEngine } from './engines/signals/intelligence.js';
+import { marketState } from './engines/market/state.js';
+import { calculateRSI, computeTASnapshot } from './engines/analytics/ta.js';
 // import { clerkPlugin } from '@clerk/fastify';
 import { userRoutes } from './routes/user.js';
 
@@ -123,7 +125,7 @@ async function start(): Promise<void> {
     }
 
     // Fetch initial historical candles for all timeframes
-    const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
+    const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'] as const;
     let initialCandles: any[] = [];
     for (const tf of timeframes) {
         try {
@@ -185,7 +187,7 @@ async function start(): Promise<void> {
     quantEngine.start(globalSymbol);
 
     // Start Signal Intelligence Engine (sentiment, macro, TA — background)
-    signalIntelligenceEngine.start(globalSymbol);
+    signalIntelligenceEngine.start();
 
     // ── Options engine (simulated in dev, Deribit in prod) ──
     const latestPrice = initialCandles.length > 0
@@ -292,6 +294,49 @@ async function start(): Promise<void> {
                 confluenceEngine.setVWAF(vwafData);
                 alertsEngine.checkFunding(vwafData);
             }
+
+            // --- WIRE MARKET STATE & INTELLIGENCE ---
+            (async () => {
+                try {
+                    // 1. Orderbook
+                    const obRaw = await redis.get('orderbook.aggregated');
+                    if (obRaw) marketState.orderbook = JSON.parse(obRaw);
+
+                    // 2. Liquidations
+                    const heatmap = liquidationEngine.getHeatmap?.();
+                    if (heatmap) marketState.liquidations = heatmap;
+
+                    // 3. Technicals (Multi-timeframe)
+                    const [c1d, c1w, c1m] = await Promise.all([
+                        redis.get(`candles:${globalSymbol}:1d`),
+                        redis.get(`candles:${globalSymbol}:1w`),
+                        redis.get(`candles:${globalSymbol}:1M`)
+                    ]);
+
+                    if (c1d) {
+                        const d1 = JSON.parse(c1d);
+                        const w1 = c1w ? JSON.parse(c1w) : [];
+                        const m1 = c1m ? JSON.parse(c1m) : [];
+
+                        const wrsi = w1.length > 14 ? calculateRSI(w1).pop() ?? 50 : 50;
+                        const mrsi = m1.length > 14 ? calculateRSI(m1).pop() ?? 50 : 50;
+
+                        const ta = computeTASnapshot(d1, wrsi, mrsi);
+                        if (ta) {
+                            marketState.technicals = {
+                                ...ta,
+                                trend: {
+                                    daily: ta.smaAlignment?.trend || 'neutral',
+                                    weekly: w1.length > 20 ? ((calculateRSI(w1).pop() ?? 50) > 50 ? 'bullish' : 'bearish') : 'neutral'
+                                },
+                                htfRSI: { weekly: wrsi, monthly: mrsi }
+                            };
+                        }
+                    }
+                } catch (err) {
+                    logger.error({ err }, 'Failed to update marketState for intelligence');
+                }
+            })();
 
             // Check alerts for confluence and walls
             const confZones = confluenceEngine.getZones?.();

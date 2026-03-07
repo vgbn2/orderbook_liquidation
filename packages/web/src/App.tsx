@@ -110,8 +110,12 @@ export function App() {
         });
     }, []);
 
+    const retryRef = useRef<Record<string, number>>({});
+
     // Fetch historical candles from backend
     const fetchHistorical = useCallback(async (tf: string, sym: string) => {
+        const key = `${sym}:${tf}`;
+
         // ── STEP 1: Check cache ──
         const cached = await getCachedCandles(sym, tf);
 
@@ -119,7 +123,7 @@ export function App() {
         if (cached.fromCache !== 'none' && !showAggregated) {
             setCandles(cached.candles);
             setLoading(false);
-            recordArrive(sym, tf);
+            // recordArrive(sym, tf); // MOVED DOWN
 
             if (!cached.stale) {
                 // Gap-fill background refresh
@@ -151,13 +155,21 @@ export function App() {
                 else {
                     setCandles(data);
                     await saveCandles(sym, tf, data);
-                    recordArrive(sym, tf);
+                    // recordArrive(sym, tf); // MOVED DOWN
                 }
+                retryRef.current[key] = 0;
             }
             setLoading(false);
+            recordArrive(sym, tf); // Single call after data is set (either from cache or fetch)
         } catch (err) {
             console.error('Failed to fetch OHLCV:', err);
-            setTimeout(() => fetchHistorical(tf, sym), 3000);
+            const retries = retryRef.current[key] || 0;
+            if (retries < 3) {
+                retryRef.current[key] = retries + 1;
+                setTimeout(() => fetchHistorical(tf, sym), 3000);
+            } else {
+                setLoading(false);
+            }
         }
     }, [showAggregated]);
 

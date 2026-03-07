@@ -10,28 +10,28 @@ import { geminiAdapter } from '../../adapters/gemini.js';
 
 export interface IntelligenceSnapshot {
     timestamp: number;
-    overallScore: number; // -10 to +10
-    bias: 'strong_buy' | 'buy' | 'neutral' | 'sell' | 'strong_sell';
-    sentiment: {
-        score: number; // -10 to +10
-        fearGreed: number; // 0-100 mapped
-        trend: 'improving' | 'deteriorating' | 'neutral';
-    };
-    macro: {
-        score: number; // -10 to +10 mapped from FRED
-        realYield: number;
-        creditSpread: number;
-    };
-    technical: {
-        score: number; // -10 to +10
-        trend: 'bullish' | 'bearish' | 'neutral';
+    overallScore: number;
+    overallBias: 'strong_buy' | 'buy' | 'neutral' | 'sell' | 'strong_sell';
+    macroSurpriseScore: number;
+    fearGreed: {
+        value: number; // 0-100
+        classification: string;
     };
     geopolitics: {
-        score: number; // 0 to 10 (Risk) mapped to -10 to +10 logic
-        riskLevel: 'low' | 'elevated' | 'high' | 'extreme';
+        riskScore: number; // 0-10
         summary: string;
+        hotZones: string[];
     };
+    ta: {
+        rsi: number;
+        smaAlignment: { trend: string } | null;
+        adTrend: string;
+        marketStructure: string;
+        divergence: { type: string } | null;
+    };
+    categories: { name: string; score: number }[];
     aiSummary: string;
+    fred?: any;
 }
 
 class SignalIntelligenceEngine extends EventEmitter {
@@ -47,6 +47,11 @@ class SignalIntelligenceEngine extends EventEmitter {
     private lastGeoScore = 0;
     private lastGeoRiskLevel: 'low' | 'elevated' | 'high' | 'extreme' = 'low';
     private lastGeoSummary = 'No significant geopolitical risks detected.';
+    private lastFredSnapshot: any | null = null;
+
+    private lastMacroUpdate = 0;
+    private lastGeoUpdate = 0;
+
 
     async start() {
         if (this.isRunning) return;
@@ -73,15 +78,22 @@ class SignalIntelligenceEngine extends EventEmitter {
         logger.info('Signal Intelligence Engine stopped');
     }
 
+    switchSymbol(symbol: string) {
+        this.activeSymbol = symbol;
+        this.fetchSlowData(); // Trigger fresh fetch for new symbol
+    }
+
     private async fetchSlowData() {
         try {
             // 1. Fetch Macro Data (FRED + Finnhub Forecasts inside FredAdapter)
             const fredSnapshot = await fredAdapter.fetch();
 
             if (fredSnapshot) {
+                this.lastFredSnapshot = fredSnapshot;
                 this.lastMacroScore = fredSnapshot.overallScore;
                 this.lastRealYield = fredSnapshot.realYield;
                 this.lastCreditSpread = fredSnapshot.creditSpread;
+                this.lastMacroUpdate = Date.now();
             }
 
             // 2. Fetch Geopolitical Data (GDELT + Gemini)
@@ -101,6 +113,8 @@ class SignalIntelligenceEngine extends EventEmitter {
                     else if (analysis.riskScore > 5) this.lastGeoRiskLevel = 'high';
                     else if (analysis.riskScore > 3) this.lastGeoRiskLevel = 'elevated';
                     else this.lastGeoRiskLevel = 'low';
+
+                    this.lastGeoUpdate = Date.now();
                 }
             }
 
@@ -156,7 +170,7 @@ class SignalIntelligenceEngine extends EventEmitter {
         const blendedScore = (techScore * 0.4) + (macroScore * 0.3) + (sentScore * 0.2) + (geoScore * 0.1);
         const finalScore = Math.max(-10, Math.min(10, blendedScore));
 
-        let finalBias: IntelligenceSnapshot['bias'] = 'neutral';
+        let finalBias: IntelligenceSnapshot['overallBias'] = 'neutral';
         if (finalScore >= 5) finalBias = 'strong_buy';
         else if (finalScore >= 1.5) finalBias = 'buy';
         else if (finalScore <= -5) finalBias = 'strong_sell';
@@ -165,27 +179,32 @@ class SignalIntelligenceEngine extends EventEmitter {
         const snapshot: IntelligenceSnapshot = {
             timestamp: Date.now(),
             overallScore: parseFloat(finalScore.toFixed(2)),
-            bias: finalBias,
-            sentiment: {
-                score: parseFloat(sentScore.toFixed(2)),
-                fearGreed: 50 + (sentScore * 5), // Proxy
-                trend: sentScore > 2 ? 'improving' : sentScore < -2 ? 'deteriorating' : 'neutral'
-            },
-            macro: {
-                score: parseFloat(macroScore.toFixed(2)),
-                realYield: this.lastRealYield,
-                creditSpread: this.lastCreditSpread
-            },
-            technical: {
-                score: parseFloat(techScore.toFixed(2)),
-                trend: ta.trend.daily as any
+            overallBias: finalBias,
+            macroSurpriseScore: this.lastFredSnapshot?.macroSurpriseScore ?? 0,
+            fearGreed: {
+                value: Math.round(50 + (sentScore * 5)),
+                classification: sentScore > 2 ? 'GREED' : sentScore < -2 ? 'FEAR' : 'NEUTRAL'
             },
             geopolitics: {
-                score: parseFloat(geoScore.toFixed(2)),
-                riskLevel: this.lastGeoRiskLevel,
-                summary: this.lastGeoSummary
+                riskScore: Math.abs(geoScore), // Map back to 0-10 for UI
+                summary: this.lastGeoSummary,
+                hotZones: [] // Gemini analysis could populate this if we parse it
             },
-            aiSummary: this.generateAiSummary(finalBias, techScore, macroScore, geoScore)
+            ta: {
+                rsi: ta.rsi,
+                smaAlignment: ta.smaAlignment ? { trend: ta.smaAlignment.trend } : null,
+                adTrend: ta.adTrend,
+                marketStructure: ta.smaAlignment?.trend || 'neutral', // Using trend as proxy for structure
+                divergence: ta.divergence ? { type: ta.divergence.type } : null
+            },
+            categories: [
+                { name: 'Technical', score: techScore },
+                { name: 'Macro', score: macroScore },
+                { name: 'Sentiment', score: sentScore },
+                { name: 'Geopolitics', score: geoScore }
+            ],
+            aiSummary: this.generateAiSummary(finalBias, techScore, macroScore, geoScore),
+            fred: this.lastFredSnapshot
         };
 
         clientHub.broadcast(`signal.intelligence.${this.activeSymbol}` as any, snapshot);

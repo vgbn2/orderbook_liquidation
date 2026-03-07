@@ -148,26 +148,36 @@ export class OptionsEngine {
             const analytics = this.compute();
             if (!analytics) return;
 
-            // Persist to TimescaleDB (one row per type per strike)
+            // Persist to TimescaleDB (single batched multi-row insert)
             const now = new Date();
             const expiry = new Date(Date.now() + 30 * 86400_000); // approximate expiry
-            for (const [strikeStr, data] of Object.entries(analytics.oi_by_strike)) {
+            const entries = Object.entries(analytics.oi_by_strike);
+
+            if (entries.length === 0) return;
+
+            const values: any[] = [];
+            const placeholders: string[] = [];
+            let pIdx = 1;
+
+            for (const [strikeStr, data] of entries) {
                 const strike = parseFloat(strikeStr);
-                const strikeData = this.strikes.get(strike);
-                const iv = strikeData?.iv ?? null;
+                const iv = this.strikes.get(strike)?.iv ?? null;
+
                 // Call row
-                query(
-                    `INSERT INTO options_snapshots (time, symbol, strike, expiry, type, oi, iv, delta, gamma)
-                     VALUES ($1, $2, $3, $4, 'call', $5, $6, NULL, NULL)`,
-                    [now, 'BTCUSDT', strike, expiry, data.call_oi, iv]
-                ).catch((e: any) => logger.error('Options DB Insert Error', e));
+                placeholders.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, 'call', $${pIdx++}, $${pIdx++}, NULL, NULL)`);
+                values.push(now, 'BTCUSDT', strike, expiry, data.call_oi, iv);
+
                 // Put row
-                query(
-                    `INSERT INTO options_snapshots (time, symbol, strike, expiry, type, oi, iv, delta, gamma)
-                     VALUES ($1, $2, $3, $4, 'put', $5, $6, NULL, NULL)`,
-                    [now, 'BTCUSDT', strike, expiry, data.put_oi, iv]
-                ).catch((e: any) => logger.error('Options DB Insert Error', e));
+                placeholders.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, 'put', $${pIdx++}, $${pIdx++}, NULL, NULL)`);
+                values.push(now, 'BTCUSDT', strike, expiry, data.put_oi, iv);
             }
+
+            query(
+                `INSERT INTO options_snapshots (time, symbol, strike, expiry, type, oi, iv, delta, gamma)
+                 VALUES ${placeholders.join(', ')}`,
+                values
+            ).catch((e: any) => logger.error('Options DB Batch Insert Error', e));
+
 
             clientHub.broadcast('options.analytics' as any, analytics);
         }, BROADCAST_INTERVAL);

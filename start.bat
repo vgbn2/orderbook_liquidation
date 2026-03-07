@@ -40,7 +40,7 @@ if %ERRORLEVEL% neq 0 (
     )
 )
 echo        ✓ TimescaleDB running on port 5432
-echo        ✓ Redis running on port 6379
+echo        ✓ Redis running on port 6380
 echo.
 
 :: ── Install server dependencies ──────────────────────────────

@@ -85,15 +85,23 @@ export class VWAFEngine {
             // Cache in Redis
             redis.set('vwaf', JSON.stringify(data), 'EX', 30).catch(() => { });
 
-            // Persist to TimescaleDB (one row per exchange)
+            // Persist to TimescaleDB (single batched multi-row insert)
             const now = new Date();
+            const values: any[] = [];
+            const placeholders: string[] = [];
+            let pIdx = 1;
+
             for (const ex of data.by_exchange) {
-                query(
-                    `INSERT INTO funding_snapshots (time, exchange, symbol, rate, oi_usd, vwaf)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [now, ex.exchange, 'BTCUSDT', ex.rate, ex.oi_usd, data.vwaf]
-                ).catch((e: any) => logger.error('VWAF DB Insert Error', e));
+                placeholders.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++})`);
+                values.push(now, ex.exchange, 'BTCUSDT', ex.rate, ex.oi_usd, data.vwaf);
             }
+
+            query(
+                `INSERT INTO funding_snapshots (time, exchange, symbol, rate, oi_usd, vwaf)
+                 VALUES ${placeholders.join(', ')}`,
+                values
+            ).catch((e: any) => logger.error('VWAF DB Batch Insert Error', e));
+
 
             clientHub.broadcast('vwaf', data);
         }, BROADCAST_INTERVAL);

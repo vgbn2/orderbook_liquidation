@@ -29,6 +29,8 @@ function getTTL(timeframe: string): number {
         '1h': 2 * 60 * 60 * 1000,
         '4h': 6 * 60 * 60 * 1000,
         '1d': 24 * 60 * 60 * 1000,
+        '1w': 48 * 60 * 60 * 1000,
+        '1M': 72 * 60 * 60 * 1000,
         DEFAULT: 60 * 60 * 1000,
     };
     return TTL_MAP[timeframe] || TTL_MAP.DEFAULT;
@@ -144,6 +146,7 @@ export async function mergeGapCandles(
 ): Promise<CandleData[]> {
     if (freshCandles.length === 0) return existingCandles;
 
+    const key = cacheKey(symbol, timeframe);
     const map = new Map<number, CandleData>(existingCandles.map((c) => [c.time, c]));
     for (const candle of freshCandles) {
         map.set(candle.time, candle);
@@ -153,6 +156,10 @@ export async function mergeGapCandles(
         .sort((a, b) => a.time - b.time)
         .slice(-MAX_PERSIST);
 
-    await saveCandles(symbol, timeframe, merged);
+    if (freshCandles.length > 3) {
+        await saveCandles(symbol, timeframe, merged);
+    } else {
+        memoryCache.set(key, { candles: merged, savedAt: Date.now() });
+    }
     return merged;
 }

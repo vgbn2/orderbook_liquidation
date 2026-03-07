@@ -92,12 +92,12 @@ export function QuantPanel() {
                         <div className="stat-card" style={{ flex: 1 }}>
                             <div className="stat-label">DRIFT (1D)</div>
                             <div className={`stat-value ${safe.num(meta.adjustedDrift) > 0 ? 'pos' : safe.num(meta.adjustedDrift) < 0 ? 'neg' : ''}`}>
-                                {fmt.pct(safe.num(meta.adjustedDrift), '0.00%')}
+                                {fmt.pct(safe.num(meta.adjustedDrift), 2)}
                             </div>
                         </div>
                         <div className="stat-card" style={{ flex: 1 }}>
                             <div className="stat-label">VOLATILITY</div>
-                            <div className="stat-value">{fmt.pct(safe.num(meta.stepVolatility), '0.00%')}</div>
+                            <div className="stat-value">{fmt.pct(safe.num(meta.stepVolatility), 2)}</div>
                         </div>
                     </div>
                 </div>

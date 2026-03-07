@@ -27,19 +27,22 @@ export async function startPrewarm(ranked: { symbol: string; timeframe: string }
     }
 
     isPrewarming = true;
-    for (const combo of ranked) {
-        await requestIdleCallbackPolyfill();
-        const existing = await getCachedCandles(combo.symbol, combo.timeframe);
+    try {
+        for (const combo of ranked) {
+            await requestIdleCallbackPolyfill();
+            const existing = await getCachedCandles(combo.symbol, combo.timeframe);
 
-        if (existing.fromCache === 'none') {
-            await prewarmFull(combo.symbol, combo.timeframe);
-            await sleep(PREWARM_DELAY_MS);
-        } else if (existing.stale) {
-            await prewarmGapFill(combo.symbol, combo.timeframe, existing.lastTime);
-            await sleep(200);
+            if (existing.fromCache === 'none') {
+                await prewarmFull(combo.symbol, combo.timeframe);
+                await sleep(PREWARM_DELAY_MS);
+            } else if (existing.stale) {
+                await prewarmGapFill(combo.symbol, combo.timeframe, existing.lastTime);
+                await sleep(200);
+            }
         }
+    } finally {
+        isPrewarming = false;
     }
-    isPrewarming = false;
 }
 
 async function prewarmFull(symbol: string, timeframe: string): Promise<void> {
