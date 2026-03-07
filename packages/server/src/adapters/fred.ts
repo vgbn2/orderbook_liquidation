@@ -68,15 +68,28 @@ export interface FredSnapshot {
     macroSurpriseScore: number | null;
 }
 
+// Track global FRED throttle state
+let fredThrottledUntil = 0;
+
 async function fetchSeries(seriesId: string, units?: string): Promise<{ value: number; date: string; previousValue: number } | null> {
     const apiKey = config.FRED_API_KEY;
     if (!apiKey) return null;
+
+    // Abort if we're in a throttle window
+    if (Date.now() < fredThrottledUntil) return null;
 
     try {
         let url = `${BASE_URL}?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=2`;
         if (units) url += `&units=${units}`;
 
         const res = await fetch(url);
+
+        if (res.status === 429) {
+            logger.warn('FRED 429 Rate Limit — cooldown 30m');
+            fredThrottledUntil = Date.now() + 30 * 60 * 1000;
+            return null;
+        }
+
         if (!res.ok) throw new Error(`FRED ${seriesId}: ${res.status}`);
 
         const json = await res.json() as { observations: Array<{ date: string; value: string }> };
@@ -183,6 +196,12 @@ class FredAdapter {
     async fetch(): Promise<FredSnapshot | null> {
         if (!config.FRED_API_KEY) {
             logger.debug('FRED_API_KEY not set — skipping FRED fetch');
+            return this.lastSnapshot;
+        }
+
+        // Global throttle check
+        if (Date.now() < fredThrottledUntil) {
+            logger.debug('FRED fetch skipped — throttle active');
             return this.lastSnapshot;
         }
 

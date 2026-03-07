@@ -12,6 +12,7 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
     const popoverRef = useRef<HTMLDivElement>(null);
     const {
         tradingConfirmations, setTradingConfirmations,
+        showWatchlist, setShowWatchlist,
         theme, setTheme,
         uiComplexity, setUiComplexity,
         chartLayout, setChartLayout
@@ -81,6 +82,16 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
                         }}
                     >
                         {tradingConfirmations ? 'ON' : 'OFF'}
+                    </button>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Show Watchlist</span>
+                    <button
+                        className={`toggle ${showWatchlist ? 'active' : ''}`}
+                        onClick={() => setShowWatchlist(!showWatchlist)}
+                    >
+                        {showWatchlist ? 'ON' : 'OFF'}
                     </button>
                 </div>
 

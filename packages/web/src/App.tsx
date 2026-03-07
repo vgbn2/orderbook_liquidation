@@ -123,7 +123,7 @@ export function App() {
         if (cached.fromCache !== 'none' && !showAggregated) {
             setCandles(cached.candles);
             setLoading(false);
-            // recordArrive(sym, tf); // MOVED DOWN
+            recordArrive(sym, tf);
 
             if (!cached.stale) {
                 // Gap-fill background refresh

@@ -72,11 +72,89 @@ const SurpriseMeterBar: React.FC<SurpriseMeterBarProps> = ({ score, label, large
     );
 };
 
+// ── Helpers ──────────────────────────────────────────────────
+
+const geoRiskColor = (riskScore: number): string => {
+    if (riskScore > 7) return 'var(--negative)';
+    if (riskScore > 4) return '#f59e0b';
+    if (riskScore > 2) return 'var(--positive-muted)';
+    return 'var(--positive)';
+};
+
+const formatDate = (dateStr: string): string => {
+    try {
+        const d = new Date(dateStr.replace(/(\d{4})(\d{2})(\d{2})T.*/, '$1-$2-$3'));
+        const diffH = (Date.now() - d.getTime()) / 3600000;
+        if (diffH < 1) return `${Math.floor(diffH * 60)}m ago`;
+        if (diffH < 24) return `${Math.floor(diffH)}h ago`;
+        return `${Math.floor(diffH / 24)}d ago`;
+    } catch {
+        return dateStr.slice(0, 8);
+    }
+};
+
+// ── Components ────────────────────────────────────────────────
+
+const SectionLoader: React.FC<{ label: string }> = ({ label }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '16px 0' }}>
+        <style>{`.pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s ease-in-out infinite; } @keyframes pulse { 0%,100% { opacity: 0.3 } 50% { opacity: 1 } }`}</style>
+        <div className="pulse-dot" />
+        <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{label}</span>
+    </div>
+);
+
+const DataAgeTag: React.FC<{ updatedAt: number | null }> = ({ updatedAt }) => {
+    if (updatedAt === null) {
+        return <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>LOADING...</span>;
+    }
+    const ageMinutes = (Date.now() - updatedAt) / 60000;
+    const label = ageMinutes < 2 ? 'LIVE'
+        : ageMinutes < 60 ? `${Math.floor(ageMinutes)}m ago`
+            : `${Math.floor(ageMinutes / 60)}h ago`;
+    const color = ageMinutes < 30 ? 'var(--positive)' : 'var(--text-muted)';
+    return <span style={{ color, fontSize: '9px', letterSpacing: '0.5px' }}>{label}</span>;
+};
+
+const GeopoliticalEventCard: React.FC<{ event: any }> = ({ event }) => {
+    const themeColor: Record<string, string> = {
+        CONFLICT: 'var(--negative)',
+        NUCLEAR: 'var(--negative)',
+        SANCTIONS: '#f59e0b',
+        ELECTION: 'var(--accent)',
+        TERRORISM: 'var(--negative)',
+        COUP: 'var(--negative)',
+        MILITARY: '#f59e0b',
+        PROTEST: 'var(--accent)',
+        GEOPOLITICAL: 'var(--text-muted)'
+    };
+    const color = themeColor[event.riskTheme] || 'var(--text-muted)';
+
+    return (
+        <a href={event.url} target="_blank" rel="noopener noreferrer" style={{
+            textDecoration: 'none', display: 'block', padding: '10px 12px', borderRadius: '6px',
+            background: 'var(--bg-deep)', border: `1px solid var(--border-low)`, marginBottom: '8px', transition: 'border-color 0.15s'
+        }} onMouseEnter={(e) => e.currentTarget.style.borderColor = color} onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-low)'}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                <span style={{ padding: '1px 6px', borderRadius: '3px', fontSize: '8px', fontWeight: 700, background: `${color}22`, color: color, flexShrink: 0 }}>
+                    {event.riskTheme}
+                </span>
+                <span style={{ fontSize: '9px', color: 'var(--text-muted)', flexShrink: 0 }}>
+                    {event.source} · {formatDate(event.date)}
+                </span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-primary)', marginTop: '6px', lineHeight: 1.4 }}>
+                {event.title.length > 100 ? event.title.substring(0, 100) + '...' : event.title}
+            </div>
+        </a>
+    );
+};
+
 // ── Main Page ────────────────────────────────────────────────
 
 export const IntelligencePage: React.FC = () => {
     const intel = useMarketDataStore(s => s.intelligenceSnapshot);
 
+    const hasData = intel !== null;
     const score = intel?.overallScore ?? 0;
     const bias = intel?.overallBias ?? 'neutral';
 
@@ -108,30 +186,32 @@ export const IntelligencePage: React.FC = () => {
                         EDGEFINDER
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', letterSpacing: '2px' }}>
-                        SIGNAL INTELLIGENCE ENGINE · PHASE 6.5 & 6.6
+                        SIGNAL INTELLIGENCE ENGINE · PHASE 10
                     </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
                     <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>OVERALL BIAS</div>
-                        <div style={{ fontSize: '18px', fontWeight: 700, color: currentBias.color }}>{currentBias.label}</div>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: hasData ? currentBias.color : 'var(--text-muted)' }}>
+                            {hasData ? currentBias.label : 'AWAITING DATA'}
+                        </div>
                     </div>
                     <div style={{
                         width: '64px',
                         height: '64px',
                         borderRadius: '12px',
                         background: 'var(--bg-surface)',
-                        border: `2px solid ${currentBias.color}`,
+                        border: `2px solid ${hasData ? currentBias.color : 'var(--border-medium)'}`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: '24px',
                         fontWeight: 900,
-                        color: currentBias.color,
-                        boxShadow: `0 0 20px ${currentBias.color}22`
+                        color: hasData ? currentBias.color : 'var(--text-muted)',
+                        boxShadow: hasData ? `0 0 20px ${currentBias.color}22` : 'none'
                     }}>
-                        {score.toFixed(1)}
+                        {hasData ? score.toFixed(1) : '--'}
                     </div>
                 </div>
             </div>
@@ -141,7 +221,10 @@ export const IntelligencePage: React.FC = () => {
 
                 {/* Global Surprise Meter */}
                 <div style={{ gridColumn: 'span 12', background: 'var(--bg-surface)', borderRadius: '12px', padding: '24px', border: '1px solid var(--border-medium)' }}>
-                    <SectionHeader title="AGGREGATE MACRO SURPRISE" subtitle="Weighted deviation from consensus across global indicators" />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <SectionHeader title="AGGREGATE MACRO SURPRISE" subtitle="Weighted deviation from consensus across global indicators" />
+                        <DataAgeTag updatedAt={intel?.dataAge?.macroUpdatedAt ?? null} />
+                    </div>
                     <SurpriseMeterBar score={intel?.macroSurpriseScore ?? null} large label="Systemic deviation from market expectations" />
                 </div>
 
@@ -200,28 +283,50 @@ export const IntelligencePage: React.FC = () => {
                     </div>
 
                     <div style={{ background: 'var(--bg-surface)', borderRadius: '12px', padding: '24px', border: '1px solid var(--border-medium)', flex: 1 }}>
-                        <SectionHeader title="GEOPOLITICAL RISK" subtitle="AI-driven GDELT analysis" />
-                        <div style={{ marginBottom: '16px' }}>
-                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>RISK SCORE (0-10)</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{ fontSize: '32px', fontWeight: 800, color: (intel?.geopolitics?.riskScore ?? 0) > 6 ? 'var(--negative)' : 'var(--positive)' }}>
-                                    {intel?.geopolitics?.riskScore ?? '--'}
-                                </div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                                    {intel?.geopolitics?.summary || 'No recent analysis available.'}
-                                </div>
-                            </div>
-                        </div>
-                        {intel?.geopolitics?.hotZones && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-medium)', paddingBottom: '8px' }}>
                             <div>
-                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px' }}>HOT ZONES</div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                    {intel.geopolitics.hotZones.map((zone: string) => (
-                                        <span key={zone} style={{ padding: '2px 8px', background: 'var(--bg-deep)', border: '1px solid var(--border-medium)', borderRadius: '4px', fontSize: '9px' }}>
-                                            {zone}
-                                        </span>
-                                    ))}
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', letterSpacing: '1px' }}>GEOPOLITICAL RISK</div>
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>AI-driven GDELT analysis</div>
+                            </div>
+                            <DataAgeTag updatedAt={intel?.dataAge?.geoUpdatedAt ?? null} />
+                        </div>
+
+                        {intel === null || intel?.dataAge?.geoUpdatedAt == null ? (
+                            <SectionLoader label="Fetching geopolitical data..." />
+                        ) : (
+                            <div>
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '16px' }}>
+                                    <div style={{ fontSize: '40px', fontWeight: 800, lineHeight: 1, color: geoRiskColor(intel.geopolitics.riskScore), flexShrink: 0 }}>
+                                        {intel.geopolitics.riskScore.toFixed(1)}
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '8px' }}>
+                                            {intel.geopolitics.summary}
+                                        </div>
+                                        {intel.geopolitics.hotZones && intel.geopolitics.hotZones.length > 0 && (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                {intel.geopolitics.hotZones.map((zone: string) => (
+                                                    <span key={zone} style={{ padding: '2px 8px', background: 'var(--bg-deep)', border: '1px solid var(--border-medium)', borderRadius: '4px', fontSize: '9px' }}>
+                                                        {zone}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
+
+                                {intel.geopolitics.events && intel.geopolitics.events.length > 0 ? (
+                                    <div>
+                                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', letterSpacing: '0.5px' }}>RECENT EVENTS</div>
+                                        {intel.geopolitics.events.slice(0, 5).map((event: any, i: number) => (
+                                            <GeopoliticalEventCard key={i} event={event} />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '8px 0' }}>
+                                        No significant geopolitical events in GDELT feed.
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

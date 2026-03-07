@@ -14,6 +14,10 @@ export class LiquidationEngine {
     private broadcastTimer: ReturnType<typeof setInterval> | null = null;
     private spotPrice = 0;
     private symbol = 'BTCUSDT';
+
+    setSymbol(symbol: string) {
+        this.symbol = symbol;
+    }
     private lastHeatmap: any = null;
     private eventBuffer: LiquidationEvent[] = [];
     private persistTimer: ReturnType<typeof setInterval> | null = null;
@@ -217,7 +221,7 @@ export function generateSimulatedLiquidation(spot: number): LiquidationEvent {
     return {
         time: Date.now(),
         exchange: (['binance', 'bybit', 'okx'] as const)[Math.floor(Math.random() * 3)],
-        symbol: 'BTCUSDT',
+        symbol: 'BTCUSDT', // Simulation uses fallback, but engine now parameterized
         price: Math.round(spot + offset),
         size_usd: rnd(10_000, 5_000_000),
         side,

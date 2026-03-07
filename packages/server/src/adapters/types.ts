@@ -122,6 +122,52 @@ export interface LiquidationHeatmapEntry {
 
 export type LiquidationHeatmap = Record<number, LiquidationHeatmapEntry>;
 
+export interface GeopoliticalEvent {
+    title: string;
+    url: string;
+    source: string;
+    date: string;
+    riskTheme: 'CONFLICT' | 'SANCTIONS' | 'NUCLEAR' | 'ELECTION' | 'TERRORISM' | 'COUP' | 'MILITARY' | 'PROTEST' | 'GEOPOLITICAL';
+}
+
+export interface IntelligenceSnapshot {
+    timestamp: number;
+    overallScore: number;
+    overallBias: 'strong_buy' | 'buy' | 'neutral' | 'sell' | 'strong_sell';
+    macroSurpriseScore: number;
+    dataAge: {
+        macroUpdatedAt: number | null;
+        geoUpdatedAt: number | null;
+        taUpdatedAt: number | null;
+    };
+    fearGreed: {
+        value: number; // 0-100
+        classification: string;
+    };
+    geopolitics: {
+        riskScore: number; // 0-10
+        summary: string;
+        hotZones: string[];
+        events: GeopoliticalEvent[];
+    };
+    ta: {
+        rsi: number;
+        smaAlignment: { trend: string } | null;
+        adTrend: string;
+        marketStructure: string;
+        divergence: { type: string } | null;
+    };
+    categories: {
+        name: string;
+        score: number;
+        weight: number;
+        bias: string;
+        details: any;
+    }[];
+    aiSummary: string;
+    fred?: any;
+}
+
 // ── Trades ────────────────────────────────────
 export interface Trade {
     time: number;

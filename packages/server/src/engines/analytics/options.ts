@@ -23,6 +23,11 @@ export class OptionsEngine {
     private strikes: Map<number, StrikeData> = new Map();
     private broadcastTimer: ReturnType<typeof setInterval> | null = null;
     private spotPrice = 0;
+    private activeSymbol = 'BTCUSDT';
+
+    setSymbol(symbol: string) {
+        this.activeSymbol = symbol;
+    }
 
     /**
      * Update spot price reference.
@@ -165,11 +170,11 @@ export class OptionsEngine {
 
                 // Call row
                 placeholders.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, 'call', $${pIdx++}, $${pIdx++}, NULL, NULL)`);
-                values.push(now, 'BTCUSDT', strike, expiry, data.call_oi, iv);
+                values.push(now, this.activeSymbol, strike, expiry, data.call_oi, iv);
 
                 // Put row
                 placeholders.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, 'put', $${pIdx++}, $${pIdx++}, NULL, NULL)`);
-                values.push(now, 'BTCUSDT', strike, expiry, data.put_oi, iv);
+                values.push(now, this.activeSymbol, strike, expiry, data.put_oi, iv);
             }
 
             query(

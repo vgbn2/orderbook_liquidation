@@ -14,6 +14,11 @@ const BROADCAST_INTERVAL = 5_000;
 export class VWAFEngine {
     private snapshots: Map<Exchange, FundingSnapshot> = new Map();
     private broadcastTimer: ReturnType<typeof setInterval> | null = null;
+    private activeSymbol = 'BTCUSDT';
+
+    setSymbol(symbol: string) {
+        this.activeSymbol = symbol;
+    }
 
     /**
      * Ingest a funding rate snapshot from an exchange.
@@ -93,7 +98,7 @@ export class VWAFEngine {
 
             for (const ex of data.by_exchange) {
                 placeholders.push(`($${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++}, $${pIdx++})`);
-                values.push(now, ex.exchange, 'BTCUSDT', ex.rate, ex.oi_usd, data.vwaf);
+                values.push(now, ex.exchange, this.activeSymbol, ex.rate, ex.oi_usd, data.vwaf);
             }
 
             query(

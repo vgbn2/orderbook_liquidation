@@ -295,7 +295,7 @@ async function start(): Promise<void> {
                 alertsEngine.checkFunding(vwafData);
             }
 
-            // --- WIRE MARKET STATE & INTELLIGENCE ---
+            // --- WIRE MARKET STATE & INTELLIGENCE (Fast) ---
             (async () => {
                 try {
                     // 1. Orderbook
@@ -305,36 +305,8 @@ async function start(): Promise<void> {
                     // 2. Liquidations
                     const heatmap = liquidationEngine.getHeatmap?.();
                     if (heatmap) marketState.liquidations = heatmap;
-
-                    // 3. Technicals (Multi-timeframe)
-                    const [c1d, c1w, c1m] = await Promise.all([
-                        redis.get(`candles:${globalSymbol}:1d`),
-                        redis.get(`candles:${globalSymbol}:1w`),
-                        redis.get(`candles:${globalSymbol}:1M`)
-                    ]);
-
-                    if (c1d) {
-                        const d1 = JSON.parse(c1d);
-                        const w1 = c1w ? JSON.parse(c1w) : [];
-                        const m1 = c1m ? JSON.parse(c1m) : [];
-
-                        const wrsi = w1.length > 14 ? calculateRSI(w1).pop() ?? 50 : 50;
-                        const mrsi = m1.length > 14 ? calculateRSI(m1).pop() ?? 50 : 50;
-
-                        const ta = computeTASnapshot(d1, wrsi, mrsi);
-                        if (ta) {
-                            marketState.technicals = {
-                                ...ta,
-                                trend: {
-                                    daily: ta.smaAlignment?.trend || 'neutral',
-                                    weekly: w1.length > 20 ? ((calculateRSI(w1).pop() ?? 50) > 50 ? 'bullish' : 'bearish') : 'neutral'
-                                },
-                                htfRSI: { weekly: wrsi, monthly: mrsi }
-                            };
-                        }
-                    }
                 } catch (err) {
-                    logger.error({ err }, 'Failed to update marketState for intelligence');
+                    logger.error({ err }, 'Failed fast marketState update');
                 }
             })();
 
@@ -344,6 +316,40 @@ async function start(): Promise<void> {
 
         }).catch(() => { });
     }, 4_000);
+
+    // ── Decoupled Technical Intelligence (HTF) ───────────────────
+    setInterval(async () => {
+        try {
+            const [c1d, c1w, c1m] = await Promise.all([
+                redis.get(`candles:${globalSymbol}:1d`),
+                redis.get(`candles:${globalSymbol}:1w`),
+                redis.get(`candles:${globalSymbol}:1M`)
+            ]);
+
+            if (c1d) {
+                const d1 = JSON.parse(c1d);
+                const w1 = c1w ? JSON.parse(c1w) : [];
+                const m1 = c1m ? JSON.parse(c1m) : [];
+
+                const wrsi = w1.length > 14 ? calculateRSI(w1).pop() ?? 50 : 50;
+                const mrsi = m1.length > 14 ? calculateRSI(m1).pop() ?? 50 : 50;
+
+                const ta = computeTASnapshot(d1, wrsi, mrsi);
+                if (ta) {
+                    marketState.technicals = {
+                        ...ta,
+                        trend: {
+                            daily: ta.smaAlignment?.trend || 'neutral',
+                            weekly: (wrsi > 50 ? 'bullish' : 'bearish')
+                        },
+                        htfRSI: { weekly: wrsi, monthly: mrsi }
+                    };
+                }
+            }
+        } catch (err) {
+            logger.error({ err }, 'Failed HTF Technical Update');
+        }
+    }, 60_000);
 
     const SYMBOL_WHITELIST = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'LINKUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'DOTUSDT', 'MATICUSDT'];
     const LAST_SYMBOL_SWITCH = new Map<string, number>();
@@ -460,7 +466,7 @@ async function start(): Promise<void> {
                     // Send intelligence snapshot
                     const intelCached = await redis.get(`signal:intelligence:${globalSymbol}`);
                     if (intelCached) {
-                        clientHub.sendToClient(clientId, 'signal.intelligence' as any, JSON.parse(intelCached));
+                        clientHub.sendToClient(clientId, `signal.intelligence.${globalSymbol}` as any, JSON.parse(intelCached));
                     }
 
                     // Send HTF candles specially
@@ -516,6 +522,9 @@ async function start(): Promise<void> {
                         orderbookEngine.clearAll();
                         orderbookEngine.setSymbol(normalized);
                         signalIntelligenceEngine.switchSymbol(normalized);
+                        optionsEngine.setSymbol(normalized);
+                        vwafEngine.setSymbol(normalized);
+                        liquidationEngine.setSymbol(normalized);
 
                         stopBybit(oldSymbol);
                         stopOkx(oldSymbol);
@@ -534,7 +543,7 @@ async function start(): Promise<void> {
                         startGateio(globalSymbol);
 
                         quantEngine.switchSymbol(globalSymbol);
-                        signalIntelligenceEngine.switchSymbol(globalSymbol);
+                        // signalIntelligenceEngine already switched at line 524
 
                         binanceAdapter.switchSymbol(globalSymbol).then(() => {
                             binanceAdapter.fetchKlines(globalSymbol, '1m', 500).then(candles => {

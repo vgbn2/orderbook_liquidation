@@ -12,6 +12,9 @@ interface SettingsState {
     setShowOrderbook: (v: boolean) => void;
     toggleOrderbook: () => void;
 
+    showWatchlist: boolean;
+    setShowWatchlist: (v: boolean) => void;
+
     notificationLevel: 'all' | 'critical_only' | 'off';
     setNotificationLevel: (v: 'all' | 'critical_only' | 'off') => void;
 
@@ -73,6 +76,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         safeSet('term_orderbook', String(next));
         return { showOrderbook: next };
     }),
+    showWatchlist: safeGet('term_watchlist', 'true') === 'true',
+    setShowWatchlist: (v) => {
+        safeSet('term_watchlist', String(v));
+        set({ showWatchlist: v });
+    },
     notificationLevel: safeGet('term_notif_level', 'all') as 'all' | 'critical_only' | 'off',
     setNotificationLevel: (v) => {
         safeSet('term_notif_level', v);

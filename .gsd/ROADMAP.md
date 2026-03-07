@@ -61,7 +61,15 @@
 
 ## Phase 8: System Hardening & Optimization
 **Goal**: Improve operational stability and database performance.
-- [ ] Implement database batching for snapshot engines (Planned)
-- [ ] Rescale Signal Intelligence for API rate-limits (Planned)
-- [ ] Fix start script port reporting and environment consistency (Planned)
+- [x] Implement database batching for snapshot engines (Completed)
+- [x] Rescale Signal Intelligence for API rate-limits (Completed)
+- [x] Fix start script port reporting and environment consistency (Completed)
+
+## Phase 9: Pipeline Hardening & Correctness
+**Goal**: Finalize system stability by resolving v21 race conditions and logic regressions.
+- [ ] Fix GDELT 429 race conditions and caching (Planned)
+- [ ] Add Redis persistence for Intelligence snapshots (Planned)
+- [ ] Restore usage profiling metrics in App.tsx (Planned)
+- [ ] Optimize technical analysis computation frequency (Planned)
+
 

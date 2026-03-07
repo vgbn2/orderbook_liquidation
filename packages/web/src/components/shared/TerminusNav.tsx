@@ -517,6 +517,7 @@ export function TerminusNav() {
     const [showSwitcher, setShowSwitcher] = useState(false);
     const [switching, setSwitching] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const showWatchlist = useSettingsStore(s => s.showWatchlist);
     const [markets, setMarkets] = useState<any[]>(
         defaultMarkets.map(m => ({ ...m, volume: 0, price: '—', change: '—' }))
     );
@@ -832,7 +833,9 @@ export function TerminusNav() {
             </nav>
 
             {/* ── TICKER STRIP ────────────────────────────────────── */}
-            <TickerStrip markets={markets} onSelect={handleSelectMarket} active={activeMarket} />
+            {showWatchlist && (
+                <TickerStrip markets={markets} onSelect={handleSelectMarket} active={activeMarket} />
+            )}
 
             {/* ── MARKET SWITCHER MODAL ───────────────────────────── */}
             {showSwitcher && (
