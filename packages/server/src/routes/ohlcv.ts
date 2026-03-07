@@ -13,10 +13,40 @@ export async function ohlcvRoutes(app: FastifyInstance): Promise<void> {
      *   2. Fallback to Binance REST if DB is empty
      */
     app.get('/api/ohlcv', async (req, reply) => {
-        const { symbol = 'BTCUSDT', interval = '1m', limit = '500' } = req.query as Record<string, string>;
+        const { symbol = 'BTCUSDT', interval = '1m', limit = '500', since } = req.query as Record<string, string>;
         const numLimit = Math.min(parseInt(limit) || 500, 100000);
+        const sinceMs = since ? parseInt(since) : null;
 
         try {
+            // ── GAP-FILL PATH ──
+            if (sinceMs && sinceMs > 0) {
+                const sinceTimestamp = new Date(sinceMs).toISOString();
+                logger.info({ symbol, interval, sinceMs }, 'Gap-fill fetch requested');
+
+                // Try DB first
+                const dbResult = await query(
+                    `SELECT 
+                      EXTRACT(EPOCH FROM time)::bigint AS time,
+                      open, high, low, close, volume
+                     FROM ohlcv_candles 
+                     WHERE symbol = $1 AND timeframe = $2 AND time > $3
+                     ORDER BY time ASC
+                     LIMIT $4`,
+                    [symbol.toUpperCase(), interval, sinceTimestamp, numLimit],
+                );
+
+                if (dbResult.rows.length > 0) {
+                    logger.info({ count: dbResult.rows.length }, 'Returning gap OHLCV from DB');
+                    return reply.send(dbResult.rows);
+                }
+
+                // Fallback to Binance REST forward fetch
+                logger.info({ symbol, interval }, 'DB empty for gap, fetching from Binance forward');
+                const gapCandles = await binanceAdapter.fetchKlinesSince(symbol.toUpperCase(), interval, Math.floor(sinceMs / 1000), numLimit);
+                return reply.send(gapCandles);
+            }
+
+            // ── FULL FETCH PATH ──
             // Layer 1: Redis
             const cached = await redis.get(`candles:${symbol.toUpperCase()}:${interval}`);
             if (cached) {

@@ -1,24 +1,8 @@
+import { classifyRegime, computeDirectionalBias } from '../../../utils/quantUtils';
+
+
 import { useMemo, useCallback } from 'react';
 import { useMarketDataStore } from '../../../stores/marketDataStore';
-import { computeDirectionalBias } from '../../../utils/quantUtils';
-
-// ── Regime classifier ───────────────────────────────────────────────────────
-
-interface RegimeInfo {
-    icon: string;
-    label: string;
-    color: string;
-}
-
-function classifyRegime(drift: number, vol: number): RegimeInfo {
-    const absDrift = Math.abs(drift);
-    if (vol > 3.0 && absDrift > 1.0) return { icon: '🌪️', label: 'BREAKOUT', color: 'var(--color-warning)' };
-    if (vol > 2.0 && absDrift < 0.3) return { icon: '⚡', label: 'CHOP', color: 'var(--color-text-muted)' };
-    if (drift > 0.5 && vol < 2.0) return { icon: '🐂', label: 'BULL TREND', color: 'var(--color-positive)' };
-    if (drift < -0.5 && vol < 2.0) return { icon: '🐻', label: 'BEAR TREND', color: 'var(--color-negative)' };
-    return { icon: '📊', label: 'NEUTRAL', color: 'var(--color-text-muted)' };
-}
-
 
 // ── QuantSummary component ──────────────────────────────────────────────────
 

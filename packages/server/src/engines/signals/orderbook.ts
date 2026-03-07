@@ -3,6 +3,18 @@ import { redis } from '../../db/redis.js';
 import { query } from '../../db/timescale.js';
 import { clientHub } from '../../ws/client-hub.js';
 import type { OrderbookLevel, OrderbookSnapshot, OrderbookWall, AggregatedOrderbook, Exchange } from '../../adapters/types.js';
+import bindings from 'bindings';
+
+const core = bindings('terminus_core');
+
+const EXCHANGE_MAP: Record<string, number> = {
+    'binance': 0,
+    'bybit': 1,
+    'okx': 2,
+    'gateio': 3,
+    'mexc': 4,
+    'bitget': 6
+};
 
 // ══════════════════════════════════════════════════════════════
 //  Orderbook Engine — Delta State Machine + Wall Detection
@@ -45,6 +57,11 @@ export class OrderbookEngine {
         this.books.clear();
         this.wallAgeMap.clear();
         this.dirty = false;
+
+        // Clear native too
+        for (const id of Object.values(EXCHANGE_MAP)) {
+            core.clearExchange(id);
+        }
     }
 
     /**
@@ -55,36 +72,37 @@ export class OrderbookEngine {
         bids: [string, string][];
         asks: [string, string][];
     }): void {
-        const bids = new Map<number, number>();
-        const asks = new Map<number, number>();
+        const bookBids: [number, number][] = [];
+        const bookAsks: [number, number][] = [];
 
         for (const [p, q] of snapshot.bids) {
             const price = parseFloat(p);
             const qty = parseFloat(q);
-            if (qty > 0) bids.set(price, qty);
+            if (qty > 0) bookBids.push([price, qty]);
         }
 
         for (const [p, q] of snapshot.asks) {
             const price = parseFloat(p);
             const qty = parseFloat(q);
-            if (qty > 0) asks.set(price, qty);
+            if (qty > 0) bookAsks.push([price, qty]);
         }
 
-        const sortedBids = [...bids.keys()].sort((a, b) => b - a);
-        const sortedAsks = [...asks.keys()].sort((a, b) => a - b);
+        const exchangeId = EXCHANGE_MAP[exchange] ?? 255;
+        if (exchangeId !== 255) {
+            core.initSnapshot(exchangeId, bookBids, bookAsks);
+        }
 
+        // Keep local state for best bid/ask (used by some legacy triggers)
         this.books.set(exchange, {
-            bids,
-            asks,
+            bids: new Map(bookBids),
+            asks: new Map(bookAsks),
             lastUpdateId: snapshot.lastUpdateId,
-            bestBid: sortedBids[0] ?? 0,
-            bestAsk: sortedAsks[0] ?? 0,
+            bestBid: bookBids[0]?.[0] ?? 0,
+            bestAsk: bookAsks[0]?.[0] ?? 0,
         });
 
         this.dirty = true;
         this._startBroadcastLoop();
-
-        // logger.info({ exchange, bids: bids.size, asks: asks.size }, 'Orderbook snapshot loaded');
     }
 
     /**
@@ -94,42 +112,33 @@ export class OrderbookEngine {
         const book = this.books.get(exchange);
         if (!book) return;
 
-        // Some exchanges (MEXC, Gateio) send full trees on every flush rather than diffs
-        if (delta.isSnapshot) {
-            book.bids.clear();
-            book.asks.clear();
-        }
+        const bidDeltas: [number, number][] = [];
+        const askDeltas: [number, number][] = [];
 
         // Apply bid deltas
         for (const [priceStr, qtyStr] of delta.b) {
             const price = parseFloat(priceStr);
             const qty = parseFloat(qtyStr);
-            if (qty === 0) {
-                book.bids.delete(price);
-            } else {
-                book.bids.set(price, qty);
-            }
+            bidDeltas.push([price, qty]);
+            if (qty === 0) book.bids.delete(price);
+            else book.bids.set(price, qty);
         }
 
         // Apply ask deltas
         for (const [p, q] of delta.a) {
             const price = parseFloat(p);
             const qty = parseFloat(q);
-            if (qty === 0) {
-                book.asks.delete(price);
-            } else {
-                book.asks.set(price, qty);
-            }
+            askDeltas.push([price, qty]);
+            if (qty === 0) book.asks.delete(price);
+            else book.asks.set(price, qty);
+        }
+
+        const exchangeId = EXCHANGE_MAP[exchange] ?? 255;
+        if (exchangeId !== 255) {
+            core.applyDelta(exchangeId, bidDeltas, askDeltas, !!delta.isSnapshot);
         }
 
         book.lastUpdateId = delta.u;
-
-        // Update best bid/ask
-        const sortedBids = [...book.bids.keys()].sort((a, b) => b - a);
-        const sortedAsks = [...book.asks.keys()].sort((a, b) => a - b);
-        book.bestBid = sortedBids[0] ?? 0;
-        book.bestAsk = sortedAsks[0] ?? 0;
-
         this.dirty = true;
     }
 
@@ -237,44 +246,30 @@ export class OrderbookEngine {
     }
 
     /**
-     * Get aggregated orderbook with walls for a single exchange.
+     * Get aggregated orderbook with walls using ultra-fast native engine.
      */
     getAggregated(): AggregatedOrderbook | null {
-        const mergedBids = new Map<number, number>();
-        const mergedAsks = new Map<number, number>();
+        try {
+            const nativeSnap = core.getAggregated();
+            if (!nativeSnap) return null;
 
-        if (this.books.size === 0) return null;
-
-        for (const [exchange, book] of this.books.entries()) {
-            for (const [price, qty] of book.bids) {
-                mergedBids.set(price, (mergedBids.get(price) || 0) + qty);
-            }
-            for (const [price, qty] of book.asks) {
-                mergedAsks.set(price, (mergedAsks.get(price) || 0) + qty);
-            }
+            // Map native snapshot to TS type
+            return {
+                time: nativeSnap.timestamp,
+                exchange: 'binance', // default output representation
+                symbol: this.currentSymbol,
+                best_bid: nativeSnap.best_bid,
+                best_ask: nativeSnap.best_ask,
+                spread: nativeSnap.spread,
+                mid_price: nativeSnap.mid_price,
+                bids: nativeSnap.bids,
+                asks: nativeSnap.asks,
+                walls: nativeSnap.walls
+            };
+        } catch (err) {
+            logger.error({ err }, 'Native getAggregated failed, falling back to JS');
+            return null; // For now no fallback, native is primary
         }
-
-        const bids: OrderbookLevel[] = [...mergedBids.entries()]
-            .sort((a, b) => b[0] - a[0])
-            .slice(0, DEPTH_LEVELS)
-            .map(([price, qty]) => ({ price, qty }));
-
-        const asks: OrderbookLevel[] = [...mergedAsks.entries()]
-            .sort((a, b) => a[0] - b[0])
-            .slice(0, DEPTH_LEVELS)
-            .map(([price, qty]) => ({ price, qty }));
-
-        const snapshot: OrderbookSnapshot = {
-            time: Date.now(),
-            exchange: 'binance', // default output representation
-            symbol: this.currentSymbol,
-            bids,
-            asks,
-        };
-
-        const walls = this.detectWalls(snapshot);
-
-        return { ...snapshot, walls };
     }
 
     /**

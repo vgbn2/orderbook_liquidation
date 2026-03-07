@@ -15,4 +15,4 @@ import './sessionBoxesOverlay';
 import './volProfileOverlay';
 
 // Re-export registry for convenience
-export * from './overlayRegistry';
+export { runOverlays } from './overlayRegistry';

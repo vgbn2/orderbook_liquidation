@@ -3,6 +3,19 @@ import { useMarketDataStore } from '../stores/marketDataStore';
 import { usePerfStore } from '../stores/usePerfStore';
 import { useRef, useEffect, useCallback } from 'react';
 import { createWorker } from '../engines/websocketWorker';
+import { CandleData } from '../types';
+
+interface WSMessage {
+    topic: string;
+    data: any;
+    ts?: number;
+}
+
+interface ReplayData {
+    type: 'BATCH' | 'END';
+    timestamp: number;
+    events: { type: string; data: any }[];
+}
 
 export function useWebSocket() {
     const wsRef = useRef<WebSocket | null>(null);
@@ -16,7 +29,7 @@ export function useWebSocket() {
 
     // Batching & Throttling setup (Fix 3)
     const reqFrameRef = useRef<number | null>(null);
-    const pendingMessages = useRef<any[]>([]);
+    const pendingMessages = useRef<WSMessage[]>([]);
     const activeCandleTopic = useRef<string | null>(null);
 
     const pendingOrderbook = useRef<any>(null);
@@ -140,6 +153,7 @@ export function useWebSocket() {
                         'ict.sweep_confirmed',
                         `candles.binance.${symbol.toUpperCase()}.4h`,
                         `candles.binance.${symbol.toUpperCase()}.1d`,
+                        'signal.intelligence',
                         `signal.intelligence.${symbol.toUpperCase()}`,
                     ],
                 }));
@@ -182,7 +196,7 @@ export function useWebSocket() {
         }
     }, [setConnected]);
 
-    const handleParsedMessage = useCallback((msg: { topic: string; data: unknown; ts?: number }) => {
+    const handleParsedMessage = useCallback((msg: WSMessage) => {
         // Calculate processing delay
         if (msg.ts) {
             const elapsed = performance.now() - lastDelayUpdate.current;
@@ -194,7 +208,7 @@ export function useWebSocket() {
 
         switch (msg.topic) {
             case 'replay': {
-                const data = msg.data as any;
+                const data = msg.data as ReplayData;
                 if (data.type === 'BATCH') {
                     setReplayTimestamp(data.timestamp);
                     for (const event of data.events) {
@@ -209,7 +223,7 @@ export function useWebSocket() {
                 break;
             }
             case 'quant.analytics': {
-                const parsed = msg.data as any;
+                const parsed = msg.data as { symbol: string;[key: string]: any };
                 const state = useMarketDataStore.getState();
                 // Ignore if locked to another symbol
                 const lockedSym = state.lockedQuantSymbol;
@@ -230,7 +244,7 @@ export function useWebSocket() {
                     const parts = msg.topic.split('.');
                     const source = parts[1]; // binance | aggregated
                     const tf = parts[3];
-                    const candle = msg.data as any;
+                    const candle = msg.data as CandleData & { isUpdate: boolean };
 
                     if ((msg as any)._cvd !== undefined) {
                         candle.cvd = (msg as any)._cvd;

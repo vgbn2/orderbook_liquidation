@@ -105,6 +105,7 @@ const NAV_ITEMS = [
                         { icon: "◈", label: "Macro Quant", desc: "Sigma distributions, regime, drift", badge: null },
                         { icon: "▦", label: "Liquidation", desc: "Clusters, confluence zones, imbalance", badge: null },
                         { icon: "⟁", label: "Options · GEX", desc: "Max pain, gamma exposure, OI", badge: null },
+                        { icon: "◈", label: "EdgeFinder", desc: "Elite Intelligence Dashboard", badge: "New" },
                     ],
                 },
                 {
@@ -274,6 +275,8 @@ function Dropdown({ item }: { item: any }) {
                                         window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_LIQUIDATION'));
                                     } else if (it.label === 'Options · GEX') {
                                         window.dispatchEvent(new CustomEvent('TERMINUS_SHOW_OPTIONS'));
+                                    } else if (it.label === 'EdgeFinder') {
+                                        setView('edgefinder');
                                     } else if (['Backtest', 'Paper Trade', 'Optimize', 'Equity Curve', 'Trade Log', 'Drawdown', 'Heatmap'].includes(it.label)) {
                                         setView('backtest');
                                     } else if (it.label !== "Settings") {
@@ -602,6 +605,8 @@ export function TerminusNav() {
         if (store.setConfirmedSweeps) store.setConfirmedSweeps([]);
         if (store.setOpenInterest) store.setOpenInterest([] as any);
         if (store.setFundingRates) store.setFundingRates([]);
+        store.setIntelligenceSnapshot(null);
+        store.setQuantSnapshot(null);
 
         // Send to server
         send({ action: 'switch_symbol', symbol: sym });

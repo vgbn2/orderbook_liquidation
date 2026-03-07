@@ -39,6 +39,10 @@ export interface OrderbookWall {
 }
 
 export interface AggregatedOrderbook extends OrderbookSnapshot {
+    best_bid: number;
+    best_ask: number;
+    spread: number;
+    mid_price: number;
     walls: {
         bid_walls: OrderbookWall[];
         ask_walls: OrderbookWall[];

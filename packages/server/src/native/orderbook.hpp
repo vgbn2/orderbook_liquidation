@@ -39,9 +39,9 @@ public:
         }
         // Ensure sorted initially
         std::sort(levels_.begin(), levels_.begin() + count_, 
-                 [](const Level& a, const Level& b) { return Comparator()(a.price, b.price); });
+                 [](const Level& a, const Level& b) { return Comparator()(a.price_raw, b.price_raw); });
         
-        last_best_ = count_ > 0 ? levels_[0].price : 0;
+        last_best_ = count_ > 0 ? levels_[0].price_raw : 0;
     }
 
     // Copy top N levels into output array. Returns count written.
@@ -58,7 +58,7 @@ public:
     }
 
     int64_t bestPrice() const {
-        return count_ > 0 ? levels_[0].price : 0;
+        return count_ > 0 ? levels_[0].price_raw : 0;
     }
 
     bool empty() const { return count_ == 0; }
@@ -72,28 +72,28 @@ private:
 
     bool removeLevel(int64_t price) {
         for (size_t i = 0; i < count_; ++i) {
-            if (levels_[i].price == price) {
+            if (levels_[i].price_raw == price) {
                 // Shift everything left
                 std::move(levels_.begin() + i + 1, levels_.begin() + count_, levels_.begin() + i);
                 count_--;
                 
-                int64_t new_best = count_ > 0 ? levels_[0].price : 0;
+                int64_t new_best = count_ > 0 ? levels_[0].price_raw : 0;
                 bool changed = (new_best != last_best_);
                 last_best_ = new_best;
                 return changed;
             }
-            if (Comparator()(price, levels_[i].price)) break; // Passed where it should be
+            if (Comparator()(price, levels_[i].price_raw)) break; // Passed where it should be
         }
         return false;
     }
 
     bool upsertLevel(int64_t price, double qty) {
         for (size_t i = 0; i < count_; ++i) {
-            if (levels_[i].price == price) {
+            if (levels_[i].price_raw == price) {
                 levels_[i].qty = qty; // Update existing
                 return false;         // Best price doesn't change on simply updating qty
             }
-            if (Comparator()(price, levels_[i].price)) {
+            if (Comparator()(price, levels_[i].price_raw)) {
                 // Insert here, shift right
                 if (count_ < MAX_LEVELS) {
                     std::move_backward(levels_.begin() + i, levels_.begin() + count_, levels_.begin() + count_ + 1);
@@ -106,7 +106,7 @@ private:
                 }
                 
                 levels_[i] = Level{price, qty};
-                int64_t new_best = count_ > 0 ? levels_[0].price : 0;
+                int64_t new_best = count_ > 0 ? levels_[0].price_raw : 0;
                 bool changed = (new_best != last_best_);
                 last_best_ = new_best;
                 return changed;
@@ -116,7 +116,7 @@ private:
         // Append if room
         if (count_ < MAX_LEVELS) {
             levels_[count_++] = Level{price, qty};
-            int64_t new_best = levels_[0].price;
+            int64_t new_best = levels_[0].price_raw;
             bool changed = (new_best != last_best_);
             last_best_ = new_best;
             return changed;
@@ -153,8 +153,14 @@ struct ExchangeBook {
     void applyDelta(
         uint64_t update_id,
         const std::vector<std::pair<int64_t,double>>& bid_deltas,
-        const std::vector<std::pair<int64_t,double>>& ask_deltas
+        const std::vector<std::pair<int64_t,double>>& ask_deltas,
+        bool is_snap = false
     ) {
+        if (is_snap) {
+            applySnapshot(update_id, bid_deltas, ask_deltas);
+            return;
+        }
+
         if (!initialized) return;
         // Ignore stale deltas (sequence gap detection)
         if (update_id != 0 && update_id <= last_update_id) return;

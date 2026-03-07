@@ -2,14 +2,8 @@ import { useMemo } from 'react';
 import { useMarketDataStore } from '../../../stores/marketDataStore';
 import { useCandleStore } from '../../../stores/candleStore';
 import { fmt, safe } from '../../../utils/safe';
-
-// ── Regime classifier ─────────────────────────────────────────
-function classifyRegime(drift: number, vol: number) {
-    if (vol > 3) return { icon: '⚡', label: 'VOLATILE', color: '#ffeb3b' };
-    if (drift > 0.3) return { icon: '📈', label: 'TRENDING UP', color: 'var(--positive)' };
-    if (drift < -0.3) return { icon: '📉', label: 'TRENDING DOWN', color: 'var(--negative)' };
-    return { icon: '◎', label: 'RANGE', color: 'var(--text-muted)' };
-}
+import { classifyRegime, computeDirectionalBias } from '../../../utils/quantUtils';
+import { IntelligencePanel } from './IntelligencePanel';
 
 // ── Signal grade from aggregate data ──────────────────────────
 function computeSignalGrade(bias: any, liqRatio: number, optionsBias: string | null, intelligence: any = null) {
@@ -50,21 +44,8 @@ export function TerminalSummaryPanel() {
     const intelligenceSnapshot = useMarketDataStore((s: any) => s.intelligenceSnapshot);
 
     const computed = useMemo(() => {
-        // Compute bias from sigma grid
-        const sigmaGrid = safe.arr<any>(quantSnapshot?.sigmaGrid);
-        let bias = null;
-        if (sigmaGrid.length > 0) {
-            const totalProb = sigmaGrid.reduce((s, r) => s + safe.num(r.probability), 0) || 1;
-            const expectedMove = sigmaGrid.reduce((s, r) => s + (safe.num(r.pctMove) * safe.num(r.probability)) / totalProb, 0);
-            const bullWeight = sigmaGrid.filter(r => safe.num(r.pctMove) >= 0).reduce((s, r) => s + safe.num(r.probability), 0);
-            const bearWeight = sigmaGrid.filter(r => safe.num(r.pctMove) < 0).reduce((s, r) => s + safe.num(r.probability), 0);
-            const total = bullWeight + bearWeight || 1;
-            const bullPct = (bullWeight / total) * 100;
-            const bearPct = (bearWeight / total) * 100;
-            const direction = expectedMove >= 0 ? 'BULLISH' : 'BEARISH';
-            const confidence = Math.abs(bullPct - bearPct);
-            bias = { direction, expectedMove, bullPct, bearPct, confidence };
-        }
+        // Compute bias from sigma grid using shared utility
+        const bias = computeDirectionalBias(safe.arr(quantSnapshot?.sigmaGrid));
 
         const meta = safe.obj(quantSnapshot?.meta);
         const regime = meta.adjustedDrift != null
@@ -100,10 +81,12 @@ export function TerminalSummaryPanel() {
         if (quantiles.p95) areas.push({ label: 'P95', price: safe.num(quantiles.p95.price), type: 'resistance' });
 
         zones.slice(0, 4).forEach((z: any) => {
+            const zPrice = safe.num(z.center);
+            const isSupport = zPrice < lastPrice;
             areas.push({
-                label: z.type === 'support' ? 'CONF SUP' : 'CONF RES',
-                price: safe.num(z.price),
-                type: z.type === 'support' ? 'support' : 'resistance',
+                label: isSupport ? 'CONF SUP' : 'CONF RES',
+                price: zPrice,
+                type: isSupport ? 'support' : 'resistance',
             });
         });
 
@@ -135,7 +118,7 @@ export function TerminalSummaryPanel() {
                         </div>
                         <div>
                             <div style={{ fontSize: '13px', fontWeight: 800, color: signal.color, letterSpacing: '1px' }}>
-                                {signal.label}
+                                {intelligenceSnapshot ? `EDGE: ${intelligenceSnapshot.overallScore} (${intelligenceSnapshot.overallBias.replace('_', ' ').toUpperCase()})` : signal.label}
                             </div>
                             {bias ? (
                                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
@@ -209,6 +192,22 @@ export function TerminalSummaryPanel() {
                                         }}>
                                             {fmt.pct(dist)}
                                         </span>
+                                        <div style={{ display: 'flex', gap: '3px', marginLeft: 'auto' }}>
+                                            {[1, 2, 3, 4, 5].map((lv: number) => {
+                                                const gradeLevel = signal.grade === 'A' ? 5 : signal.grade === 'B' ? 3 : 1;
+                                                return (
+                                                    <div
+                                                        key={lv}
+                                                        style={{
+                                                            width: '8px',
+                                                            height: '2px',
+                                                            background: lv <= gradeLevel ? signal.color : 'rgba(255,255,255,0.05)',
+                                                            borderRadius: '1px'
+                                                        }}
+                                                    />
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -225,6 +224,7 @@ export function TerminalSummaryPanel() {
                     <QuickBtn label="◈ Options" event="TERMINUS_SHOW_OPTIONS" color="#ffeb3b" />
                 </div>
             </div>
+            <IntelligencePanel />
         </div>
     );
 }

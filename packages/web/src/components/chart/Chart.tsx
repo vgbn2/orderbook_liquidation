@@ -101,7 +101,12 @@ function ChartInner({
                 vertLine: { labelBackgroundColor: '#2962FF', color: '#758696', style: 2 as any },
                 horzLine: { labelBackgroundColor: '#2962FF', color: '#758696', style: 2 as any },
             },
-            timeScale: { borderColor: '#1c1c2e', timeVisible: true, secondsVisible: false, rightOffset: 12 },
+            timeScale: {
+                borderColor: '#1c1c2e',
+                timeVisible: true,
+                secondsVisible: false,
+                rightOffset: timeframe === '1M' ? 2 : timeframe === '1w' ? 3 : timeframe === '1d' ? 5 : 12
+            },
         });
 
         // Core Series

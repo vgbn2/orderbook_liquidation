@@ -15,8 +15,8 @@ interface SettingsState {
     notificationLevel: 'all' | 'critical_only' | 'off';
     setNotificationLevel: (v: 'all' | 'critical_only' | 'off') => void;
 
-    currentView: 'chart' | 'backtest' | 'exchange' | 'screener';
-    setView: (v: 'chart' | 'backtest' | 'exchange' | 'screener') => void;
+    currentView: 'chart' | 'backtest' | 'exchange' | 'screener' | 'edgefinder';
+    setView: (v: 'chart' | 'backtest' | 'exchange' | 'screener' | 'edgefinder') => void;
 
     exchangeView: 'binance' | 'bybit' | 'okx' | 'hyperliquid' | 'mexc' | 'bitget' | 'gateio';
     setExchangeView: (ex: 'binance' | 'bybit' | 'okx' | 'hyperliquid' | 'mexc' | 'bitget' | 'gateio') => void;
@@ -106,7 +106,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     setOrderbookHeight: (valOrFn) => set(state => {
         const next = typeof valOrFn === 'function' ? valOrFn(state.orderbookHeight) : valOrFn;
         const validNext = isNaN(next) || next < 100 || next > 1000 ? 320 : next;
-        safeSet('term_orderbook_h', String(validNext));
         safeSet('term_orderbook_h', String(validNext));
         return { orderbookHeight: validNext };
     }),

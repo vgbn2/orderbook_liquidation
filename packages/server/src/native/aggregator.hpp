@@ -2,6 +2,7 @@
 #include "orderbook.hpp"
 #include "wall_detector.hpp"
 #include <array>
+#include <map>
 #include <shared_mutex>   // C++17 reader-writer lock — multiple readers, one writer
 #include <atomic>
 
@@ -27,10 +28,11 @@ public:
         ExchangeID ex,
         uint64_t update_id,
         const std::vector<std::pair<int64_t,double>>& bid_deltas,
-        const std::vector<std::pair<int64_t,double>>& ask_deltas
+        const std::vector<std::pair<int64_t,double>>& ask_deltas,
+        bool is_snap = false
     ) {
         std::unique_lock lock(rw_mutex_);
-        books_[idx(ex)].applyDelta(update_id, bid_deltas, ask_deltas);
+        books_[idx(ex)].applyDelta(update_id, bid_deltas, ask_deltas, is_snap);
         dirty_ = true;
     }
 

@@ -23,7 +23,9 @@
 
 ## Phase 4: Performance & C++ Port
 **Goal**: Rewrite Quant Engine in C++ for ultra-low latency.
-- Planning phase (Next)
+- Consolidated Native Infrastructure (Completed)
+- C++ Orderbook & Math Engine implementation (Completed)
+- JS/C++ High-performance bridge integration (Completed)
 
 ## Phase 5: Gap Closure
 **Goal**: Address gaps from milestone audit
@@ -37,3 +39,22 @@
 - Implement RSI, SMA (20, 50, 100) and Volume Distribution logic (Completed)
 - Build Multi-factor Decision Engine (Decision Grade) (Completed)
 - Bridge EdgeFinder to TerminalSummaryPanel UI (Completed)
+
+## Phase 6.5: Elite Intelligence Dashboard
+**Goal**: Migrate EdgeFinder to a dedicated full-page experience with macro surprise meters.
+- Create `IntelligencePage.tsx` and register in `settingsStore.ts`
+- Implement `finnhub.ts` and `fred.ts` surprise math
+- Build high-fidelity "Surprise Meter" UI components
+
+## Phase 6.6: AI Geopolitical Intelligence
+**Goal**: Integrate LLM-driven geopolitical risk analysis.
+- Implement `gdelt.ts` (News) and `gemini.ts` (AI) adapters
+- Integrate Geopolitical category into `intelligence.ts`
+- Add Geopolitical Risk panel to `IntelligencePage.tsx`
+
+## Phase 7: Terminus Candle Cache & Predictive Pre-Warm
+**Goal**: Eliminate chart load latency with intelligent two-tier caching.
+- Write executable plans (Completed)
+- Fix initial partial implementation syntax errors (Completed)
+- Integrate fetchHistorical cache-first logic in App.tsx (Completed)
+- Verify end-to-end caching behavior (Completed)

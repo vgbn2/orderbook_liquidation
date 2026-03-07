@@ -1,56 +1,29 @@
-/**
- * quantMath.ts
- * Pure TypeScript implementation of the macro quant engine math.
- * Replaces the Python pandas/numpy dependency for massive speedups (no process spawning).
- */
+import bindings from 'bindings';
+
+const core = bindings('terminus_core');
 
 // ── Gaussian PDF ──────────────────────────────────────────────────────────
 export function normalPdf(x: number): number {
-    const invSqrt2Pi = 0.3989422804014327;
-    return invSqrt2Pi * Math.exp(-0.5 * x * x);
+    return core.normalPdf(x);
 }
 
 // ── Gaussian CDF (using error function approximation) ─────────────────────
 export function normalCdf(x: number): number {
-    // ERF approximation
-    const sign = x < 0 ? -1 : 1;
-    x = Math.abs(x) / Math.SQRT2;
-    const t = 1.0 / (1.0 + 0.3275911 * x);
-    const y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
-    return 0.5 * (1.0 + sign * y);
+    return core.normalCdf(x);
 }
 
 // ── Gaussian PPF (Inverse CDF based on rational approximation) ────────────
 export function normalPpf(p: number): number {
-    if (p <= 0.0) return -Infinity;
-    if (p >= 1.0) return Infinity;
-
-    if (p < 0.5) return -normalPpf(1.0 - p);
-
-    const t = Math.sqrt(-2.0 * Math.log(1.0 - p));
-    const c = [2.515517, 0.802853, 0.010328];
-    const d = [1.432788, 0.189269, 0.001308];
-
-    return t - ((c[2] * t + c[1]) * t + c[0]) / (((d[2] * t + d[1]) * t + d[0]) * t + 1.0);
+    return core.normalPpf(p);
 }
 
 // ── 1D Kalman Filter ──────────────────────────────────────────────────────
 export function kalman1D(prices: number[], R: number = 0.1, Q: number = 0.001): number[] {
     if (prices.length === 0) return [];
-
-    let x = prices[0];
-    let P = 1.0;
-    const filtered: number[] = new Array(prices.length);
-
-    for (let i = 0; i < prices.length; i++) {
-        P = P + Q;
-        const K = P / (P + R);
-        x = x + K * (prices[i] - x);
-        P = (1 - K) * P;
-        filtered[i] = x;
-    }
-
-    return filtered;
+    // Convert to TypedArray for zero-copy N-API transfer
+    const input = new Float64Array(prices);
+    const output = core.kalman1D(input, R, Q);
+    return Array.from(output);
 }
 
 // ── Array Math Helpers ────────────────────────────────────────────────────
@@ -88,20 +61,9 @@ export function pearsonCorrelation(x: number[], y: number[]): number {
     const n = Math.min(x.length, y.length);
     if (n < 2) return 0;
 
-    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
-
-    for (let i = 0; i < n; i++) {
-        sumX += x[i];
-        sumY += y[i];
-        sumXY += x[i] * y[i];
-        sumX2 += x[i] * x[i];
-        sumY2 += y[i] * y[i];
-    }
-
-    const num = n * sumXY - sumX * sumY;
-    const den = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-
-    return den === 0 ? 0 : num / den;
+    const inputX = new Float64Array(x.slice(0, n));
+    const inputY = new Float64Array(y.slice(0, n));
+    return core.pearsonCorrelation(inputX, inputY);
 }
 
 // ── Z-Score ───────────────────────────────────────────────────────────────
@@ -216,7 +178,7 @@ export function computeQuantAnalytics(symbol: string, prices: number[], dates: s
             sigma: Number(sig.toFixed(1)),
             price: target,
             probability: Number(prob.toFixed(1)),
-            pctMove: Number(pctMove.toFixed(2))
+            pctMove: (target / currentPrice - 1) * 100
         });
     }
 

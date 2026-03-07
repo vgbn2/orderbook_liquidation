@@ -13,7 +13,8 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
     const {
         tradingConfirmations, setTradingConfirmations,
         theme, setTheme,
-        uiComplexity, setUiComplexity
+        uiComplexity, setUiComplexity,
+        chartLayout, setChartLayout
     } = useSettingsStore();
 
     useEffect(() => {
@@ -110,6 +111,23 @@ export function SettingsPopover({ isOpen, onClose, anchorEl }: SettingsPopoverPr
                         onChange={(e) => {
                             setUiComplexity(e.target.value as any);
                             showToast(`UI mode changed to ${e.target.value}`, 'info', 'system', true);
+                        }}
+                    >
+                        <option value="Advanced">Advanced</option>
+                        <option value="Simple">Simple</option>
+                    </select>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>Chart Layout</span>
+                    <select
+                        aria-label="Chart layout selection"
+                        className="inp inp-select"
+                        style={{ width: 100, height: 28, fontSize: 'var(--text-xs)' }}
+                        value={chartLayout}
+                        onChange={(e) => {
+                            setChartLayout(e.target.value as any);
+                            showToast(`Chart layout changed to ${e.target.value}`, 'info', 'system', true);
                         }}
                     >
                         <option value="Advanced">Advanced</option>

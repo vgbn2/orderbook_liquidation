@@ -27,6 +27,7 @@ const FloatingBacktestPanel = lazy(() => import('./components/backtest/FloatingB
 const AlertManager = lazy(() => import('./components/shared/AlertManager.tsx').then(m => ({ default: m.AlertManager })));
 const BacktestPage = lazy(() => import('./components/backtest/BacktestPage.tsx').then(m => ({ default: m.BacktestPage })));
 const ExchangePage = lazy(() => import('./components/exchange/pages/ExchangePage.tsx').then(m => ({ default: m.ExchangePage })));
+const IntelligencePage = lazy(() => import('./components/exchange/pages/IntelligencePage.tsx').then(m => ({ default: m.IntelligencePage })));
 
 export function App() {
     const connected = useMarketDataStore(s => s.connected);
@@ -84,9 +85,11 @@ export function App() {
     // Track if views were ever opened to preserve their state when hidden
     const backtestEverOpened = useRef(false);
     const exchangeEverOpened = useRef(false);
+    const edgefinderEverOpened = useRef(false);
 
     if (currentView === 'backtest') backtestEverOpened.current = true;
     if (currentView === 'exchange') exchangeEverOpened.current = true;
+    if (currentView === 'edgefinder') edgefinderEverOpened.current = true;
 
     // Chart Toolbar states
     const [activeTool, setActiveTool] = useState<DrawingTool>('none');
@@ -382,6 +385,20 @@ export function App() {
                         <ErrorBoundary name="ExchangePage">
                             <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 11 }}>Loading Exchange...</div>}>
                                 <ExchangePage exchange={exchangeView} />
+                            </Suspense>
+                        </ErrorBoundary>
+                    </div>
+                )}
+
+                {/* ── EDGEFINDER VIEW ──────────────────────────────── */}
+                {(currentView === 'edgefinder' || edgefinderEverOpened.current) && (
+                    <div style={{
+                        display: currentView === 'edgefinder' ? 'flex' : 'none',
+                        flex: 1, overflow: 'hidden'
+                    }}>
+                        <ErrorBoundary name="IntelligencePage">
+                            <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 11 }}>Loading Intelligence...</div>}>
+                                <IntelligencePage />
                             </Suspense>
                         </ErrorBoundary>
                     </div>

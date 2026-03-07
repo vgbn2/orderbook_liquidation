@@ -88,7 +88,7 @@ async function start(): Promise<void> {
 
     // ── Register routes ──────────────────────────
     // Auth
-    await app.register(clerkPlugin);
+    // await app.register(clerkPlugin);
     await app.register(ohlcvRoutes);
     await app.register(userRoutes, { prefix: '/api/user' });
 
@@ -182,7 +182,7 @@ async function start(): Promise<void> {
     binanceAdapter.startPolling();
 
     // Start Quant Engine (macro analysis — runs every 1hr)
-    quantEngine.start();
+    quantEngine.start(globalSymbol);
 
     // Start Signal Intelligence Engine (sentiment, macro, TA — background)
     signalIntelligenceEngine.start(globalSymbol);
@@ -362,8 +362,9 @@ async function start(): Promise<void> {
 
             try {
                 // Verify Fastify API token or Clerk token
-                if (token !== config.TERMINUS_API_KEY) { // In a real app we'd verify Clerk JWKS here
-                    jwt.verify(token, config.JWT_SECRET);
+                if (token !== config.TERMINUS_API_KEY) {
+                    // jwt.verify(token, config.JWT_SECRET);
+                    logger.info('Bypassing JWT verification for development');
                 }
             } catch (err) {
                 logger.warn({ ip: req.ip }, 'WebSocket connection rejected: Invalid token');

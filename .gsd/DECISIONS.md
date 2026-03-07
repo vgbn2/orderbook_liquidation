@@ -30,3 +30,23 @@
 ### Constraints
 - **Speed:** No synchronous blocking calls during the main engine loop.
 - **Data Integrity:** TA must use the same OHLCV source as the charts to ensure consistency.
+
+---
+
+## Phase 4 Decisions — C++ Quant Engine Port
+
+**Date:** 2026-03-07
+
+### Scope
+- **Consolidation:** Merged all native logic (Aggregator, VWAF, Math) into a single `terminus_core` N-API module.
+- **Math Engine:** Replaced TS implementations with C++ for Kalman 1D, Gaussian, and Pearson Correlation.
+- **Orderbook Engine:** Moved full book aggregation and delta processing to C++.
+
+### Approach
+- **Type Safety:** Used integer-based price scaling (`PRICE_SCALE = 100`) in C++ to avoid floating-point precision issues during map-based aggregation.
+- **Robustness:** Updated N-API bridge to handle both string and numeric exchange identifiers from various JS adapters.
+- **Verification:** Implemented standalone JS verification scripts (`test-native.js`, `test-quant-math.js`) to validate C++ logic without starting the full server stack.
+
+### Results
+- **Latency:** Eliminated V8 overhead for log-return calculations and orderbook manipulations.
+- **Stability:** Solved "Desync Detected" root causes related to JS event-loop lag during high-frequency depth updates.
